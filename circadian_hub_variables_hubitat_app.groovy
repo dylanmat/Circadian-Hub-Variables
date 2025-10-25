@@ -88,4 +88,184 @@ def initialize() {
 
 def logsOff() { log.warn "Debug logging disabled"; app.updateSetting("logDebug", [value:"false", type:"bool"]) }
 
-// rest of the code unchanged...
+/********************** Scheduling ************************/ 
+
+private void scheduleUpdaters() {
+    if (updateEveryMin) {
+        runEvery1Minute("updateNow")
+    } else {
+        Integer s = Math.max(10, (updateSecs ?: 60) as Integer)
+        schedule("*/${s} * * * * ?", updateNow)
+    }
+    // Recompute on mode/sunrise/sunset changes
+    subscribe(location, "position", locationHandler) // covers TZ/lat/long changes
+    subscribe(location, "sunriseTime",  locationHandler)
+    subscribe(location, "sunsetTime",   locationHandler)
+}
+
+def locationHandler(evt) {
+    if (logDebug) log.debug "Location event ${evt?.name} → ${evt?.value}"
+    runIn(5, "updateNow")
+}
+
+/********************** Core Logic ************************/ 
+
+def updateNow() {
+    if (!validateVars()) return
+
+    Map sun = getTodaySunTimes()
+    Date now = new Date()
+
+    Date winStart = timeToday(startTimeStr)
+    Date winEnd   = timeToday(endTimeStr)
+
+    boolean inWindow = isBetween(now, winStart, winEnd)
+    if (onlyWithinWindow && !inWindow) {
+        if (logDebug) log.debug "Outside active window; skipping write."
+        return
+    }
+
+    // Build eased targets
+    BigDecimal dimmer = computeDimmer(now, sun, winStart, winEnd)
+    BigDecimal ctemp  = computeCT(now, sun, winStart, winEnd)
+
+    if (snapToInt) {
+        dimmer = (dimmer as BigDecimal).setScale(0, BigDecimal.ROUND_HALF_UP)
+        ctemp  = (ctemp  as BigDecimal).setScale(0, BigDecimal.ROUND_HALF_UP)
+    } else {
+        dimmer = (dimmer as BigDecimal).setScale(1, BigDecimal.ROUND_HALF_UP)
+        ctemp  = (ctemp  as BigDecimal).setScale(0, BigDecimal.ROUND_HALF_UP) // CT should be int for devices
+    }
+
+    writeHubVar(dimmerVarName, dimmer)
+    writeHubVar(ctVarName,     ctemp)
+
+    if (logDebug) log.debug "Wrote variables → ${dimmerVarName}: ${dimmer} | ${ctVarName}: ${ctemp}K  | sun=${sunriseSunsetSummary(sun)}"
+}
+
+private boolean validateVars() {
+    String[] names = [dimmerVarName, ctVarName]
+    for (String n : names) {
+        if (!n) { log.warn "Hub Variable name is missing."; return false }
+        def gv = null
+        try { gv = getGlobalVar(n) } catch (ignored) {}
+        if (!gv) { log.warn "Hub Variable '${n}' not found. Create it first in Settings → Hub Variables."; return false }
+        if (!(gv.type in ["integer", "bigdecimal"])) {
+            log.warn "Hub Variable '${n}' should be type integer or bigdecimal; found '${gv.type}'."
+        }
+    }
+    return true
+}
+
+private void writeHubVar(String name, BigDecimal val) {
+    try {
+        def gv = getGlobalVar(name)
+        def out = val
+        if (gv?.type == "integer") {
+            out = (val as BigDecimal).setScale(0, BigDecimal.ROUND_HALF_UP).intValue()
+        } else if (gv?.type == "bigdecimal") {
+            out = (val as BigDecimal)
+        }
+        Boolean ok = setGlobalVar(name, out)
+        if (!ok) log.warn "setGlobalVar(${name}, ${out}) returned false"
+    } catch (e) {
+        log.warn "Failed to write Hub Variable '${name}': ${e}"
+    }
+}
+
+/********************** Computations ************************/ 
+
+private Map getTodaySunTimes() {
+    Map s = getSunriseAndSunset()
+    Date sunrise = s.sunrise instanceof Date ? s.sunrise : new Date(s.sunrise.time)
+    Date sunset  = s.sunset  instanceof Date ? s.sunset  : new Date(s.sunset.time)
+
+    Integer mRamp = (morningRampMins ?: 90) as Integer
+    Integer eRamp = (eveningRampMins ?: 120) as Integer
+
+    Date morningEnd   = new Date(sunrise.time + (mRamp * 60 * 1000L))
+    Date eveningStart = new Date(sunset.time  - (eRamp * 60 * 1000L))
+
+    Long noonMillis = (sunrise.time + sunset.time) / 2L
+    Date solarNoon = new Date(noonMillis)
+
+    [sunrise: sunrise, morningEnd: morningEnd, eveningStart: eveningStart, sunset: sunset, noon: solarNoon]
+}
+
+private String sunriseSunsetSummary(Map s) {
+    ["rise ${fmtTime(s.sunrise)}", "noon ${fmtTime(s.noon)}", "eveStart ${fmtTime(s.eveningStart)}", "set ${fmtTime(s.sunset)}"].join(", ")
+}
+
+private String fmtTime(Date d) { d?.format("HH:mm") }
+
+private boolean isBetween(Date t, Date a, Date b) {
+    long x=t.time, u=a.time, v=b.time
+    return (x>=u && x<=v)
+}
+
+// Cosine ease (smooth, zero slope at ends): 0..1 → 0..1
+private BigDecimal ease(BigDecimal x) {
+    if (x <= 0) return 0.0G
+    if (x >= 1) return 1.0G
+    BigDecimal r = 0.5G - 0.5G * Math.cos(Math.PI * x as BigDecimal)
+    return r
+}
+
+// Map 0..1 to [a,b]
+private BigDecimal lerp(BigDecimal a, BigDecimal b, BigDecimal t) { a + (b - a) * t }
+
+private BigDecimal clamp(BigDecimal v, BigDecimal a, BigDecimal b) { [a, v, b].sort()[1] as BigDecimal }
+
+/** Dimmer logic */
+private BigDecimal computeDimmer(Date now, Map sun, Date winStart, Date winEnd) {
+    BigDecimal minP = (minDim ?: 20) as BigDecimal
+    BigDecimal maxP = (maxDim ?: 100) as BigDecimal
+
+    BigDecimal midStart = lerp(minP, maxP, 0.60G)
+
+    if (now.before(sun.noon)) {
+        BigDecimal t = frac(now, winStart, sun.noon)
+        return lerp(midStart, maxP, ease(t))
+    } else if (now.before(sun.eveningStart)) {
+        BigDecimal t = frac(now, sun.noon, sun.eveningStart)
+        BigDecimal dayHold = lerp(maxP, lerp(minP, maxP, 0.85G), ease(t))
+        return dayHold
+    } else if (now.before(winEnd)) {
+        BigDecimal t = frac(now, sun.eveningStart, winEnd)
+        return lerp(lerp(minP, maxP, 0.85G), minP, ease(t))
+    } else {
+        return minP
+    }
+}
+
+/** Color Temp logic (Kelvin) */
+private BigDecimal computeCT(Date now, Map sun, Date winStart, Date winEnd) {
+    BigDecimal lo = (minCT ?: 2000) as BigDecimal
+    BigDecimal hi = (maxCT ?: 6500) as BigDecimal
+
+    BigDecimal startCT = lerp(lo, hi, 0.75G)
+
+    if (now.before(sun.morningEnd)) {
+        BigDecimal t = frac(now, winStart, sun.morningEnd)
+        return lerp(startCT, hi, ease(t))
+    } else if (now.before(sun.eveningStart)) {
+        BigDecimal t = frac(now, sun.morningEnd, sun.eveningStart)
+        BigDecimal dayHi = hi
+        BigDecimal dayLo = clamp(hi - 300G, lo, hi)
+        return lerp(dayHi, dayLo, ease(t))
+    } else if (now.before(winEnd)) {
+        BigDecimal t = frac(now, sun.eveningStart, winEnd)
+        return lerp(hi - 300G, lo, ease(t))
+    } else {
+        return lo
+    }
+}
+
+// Returns 0..1 fraction between two Dates (clamped)
+private BigDecimal frac(Date now, Date a, Date b) {
+    BigDecimal A = a.time, B = b.time, N = now.time
+    if (B <= A) return 1.0G
+    BigDecimal t = (N - A) / (B - A)
+    return clamp(t, 0G, 1G)
+}
+
