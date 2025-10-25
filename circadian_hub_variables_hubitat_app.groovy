@@ -1,24 +1,16 @@
-/**
- * Circadian Hub Variables (Hubitat App)
- *
- * Calculates and writes two Hub Variables (directly via Hub Variable API)
- * that smoothly track the sun across the day:
- *   - Dimmer (percent): peaks at 100% mid‑day, down to 20% by night
- *   - Color Temperature (Kelvin): 6500K during morning/day, 2000K by night
- *
- * Author: ChatGPT (GPT‑5 Thinking)
- * Version: 1.2.0 (2025‑08‑18)
- */
 
 definition(
-    name:        "Circadian Hub Variables",
-    namespace:   "chatgpt.tools",
-    author:      "ChatGPT (GPT‑5 Thinking)",
+    name: "Circadian Hub Variables",
+    namespace: "dylanm.chv",
+    author: "Dylan M",
     description: "Calculates hub variables (dimmer %, color temp K) with smooth circadian mapping.",
-    category:    "Convenience",
-    importUrl:   "",
-    iconUrl:     "https://raw.githubusercontent.com/hubitat/community-app-icons/main/circadian-48.png",
-    iconX2Url:   "https://raw.githubusercontent.com/hubitat/community-app-icons/main/circadian-96.png"
+    category: "Convenience",
+    importUrl: "https://raw.githubusercontent.com/dylanmat/Circadian-Hub-Variables/refs/heads/main/circadian_hub_variables_hubitat_app.groovy",
+    documentationLink: "https://github.com/dylanmat/Circadian-Hub-Variables",
+    iconUrl: "",
+    iconX2Url: "",
+    iconX3Url: "",
+    singleInstance: false
 )
 
 preferences {
@@ -268,4 +260,3 @@ private BigDecimal frac(Date now, Date a, Date b) {
     BigDecimal t = (N - A) / (B - A)
     return clamp(t, 0G, 1G)
 }
-
