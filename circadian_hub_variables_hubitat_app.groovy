@@ -1,8 +1,9 @@
+import groovy.transform.Field
 
-def APP_NAME    = "Circadian Hub Variables"
-def APP_VERSION = "1.3.2"
-def APP_BRANCH  = "main"          // or "feature-dimmer-rise-tuning"
-def APP_UPDATED = "2025-10-25"    // ISO date is clean
+@Field final String APP_NAME    = "Circadian Hub Variables"
+@Field final String APP_VERSION = "1.3.3"
+@Field final String APP_BRANCH  = "main"          // or "feature-dimmer-rise-tuning"
+@Field final String APP_UPDATED = "2025-10-25"    // ISO date is clean
 
 definition(
     name: APP_NAME,
