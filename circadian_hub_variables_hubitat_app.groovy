@@ -45,8 +45,8 @@ Map mainPage() {
         section("Targets & Limits") {
             input name: "minDim", type: "number", title: "Evening dimmer minimum (%)", range: "1..100", defaultValue: 20, required: true
             input name: "maxDim", type: "number", title: "Daytime dimmer maximum (%)", range: "1..100", defaultValue: 100, required: true
-            input name: "minCT",  type: "number", title: "Evening color temp minimum (K)", range: "1500..4000", defaultValue: 2000, required: true
-            input name: "maxCT",  type: "number", title: "Daytime color temp maximum (K)", range: "4500..8000", defaultValue: 6500, required: true
+            input name: "minCT",  type: "number", title: "Evening color temp minimum (K)", range: "2000..6500", defaultValue: 2000, required: true
+            input name: "maxCT",  type: "number", title: "Daytime color temp maximum (K)", range: "2000..6500", defaultValue: 6500, required: true
         }
         section("Update & Behavior") {
             input name: "updateEveryMin", type: "bool",   title: "Update every minute (recommended)", defaultValue: true
