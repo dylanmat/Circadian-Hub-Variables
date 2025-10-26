@@ -1,16 +1,16 @@
 
 def APP_NAME    = "Circadian Hub Variables"
-def APP_VERSION = "1.3.0"
+def APP_VERSION = "1.3.2"
 def APP_BRANCH  = "main"          // or "feature-dimmer-rise-tuning"
 def APP_UPDATED = "2025-10-25"    // ISO date is clean
 
 definition(
     name: APP_NAME,
-    namespace: "dylanm.chv",
+    namespace: "dylanm.chv.${APP_BRANCH}",
     author: "Dylan M",
     description: "Calculates hub variables (dimmer %, color temp K) with smooth circadian mapping.",
     category: "Convenience",
-    version: APP_VERSION,
+    version: "${APP_VERSION}",
     importUrl: "https://raw.githubusercontent.com/dylanmat/Circadian-Hub-Variables/refs/heads/${APP_BRANCH}/circadian_hub_variables_hubitat_app.groovy",
     documentationLink: "https://github.com/dylanmat/Circadian-Hub-Variables",
     iconUrl: "",
