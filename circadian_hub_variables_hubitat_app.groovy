@@ -1,11 +1,17 @@
 
+def APP_NAME    = "Circadian Hub Variables"
+def APP_VERSION = "1.3.0"
+def APP_BRANCH  = "main"          // or "feature-dimmer-rise-tuning"
+def APP_UPDATED = "2025-10-25"    // ISO date is clean
+
 definition(
-    name: "Circadian Hub Variables",
+    name: APP_NAME,
     namespace: "dylanm.chv",
     author: "Dylan M",
     description: "Calculates hub variables (dimmer %, color temp K) with smooth circadian mapping.",
     category: "Convenience",
-    importUrl: "https://raw.githubusercontent.com/dylanmat/Circadian-Hub-Variables/refs/heads/main/circadian_hub_variables_hubitat_app.groovy",
+    version: APP_VERSION,
+    importUrl: "https://raw.githubusercontent.com/dylanmat/Circadian-Hub-Variables/refs/heads/${APP_BRANCH}/circadian_hub_variables_hubitat_app.groovy",
     documentationLink: "https://github.com/dylanmat/Circadian-Hub-Variables",
     iconUrl: "",
     iconX2Url: "",
@@ -18,7 +24,7 @@ preferences {
 }
 
 Map mainPage() {
-    dynamicPage(name: "mainPage", title: "Circadian Hub Variables", uninstall: true, install: true) {
+    dynamicPage(name: "mainPage", title: APP_NAME, uninstall: true, install: true) {
         section("Outputs: Hub Variable selectors (numeric types)") {
             def allGV = [:]
             try { allGV = getAllGlobalVars() ?: [:] } catch (ignored) {}
@@ -54,12 +60,12 @@ Map mainPage() {
 /********************** Lifecycle ************************/ 
 
 def installed() {
-    log.info "Installed with settings: ${settings}"
+    log.info "${APP_NAME} v${APP_VERSION} (${APP_BRANCH}) installed ${APP_UPDATED} with settings: ${settings}"
     initialize()
 }
 
 def updated() {
-    log.info "Updated with settings: ${settings}"
+    log.info "${APP_NAME} v${APP_VERSION} (${APP_BRANCH}) updated ${APP_UPDATED} with settings: ${settings}"
     unschedule()
     unsubscribe()
     initialize()
