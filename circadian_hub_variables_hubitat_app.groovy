@@ -1,9 +1,9 @@
 import groovy.transform.Field
 
-@Field final String APP_NAME    = "Circadian Hub Variables Test"
-@Field final String APP_VERSION = "2.0.1"
-@Field final String APP_BRANCH  = "codex/add-wellness-aware-circadian-curve-features-hyrhnz"
-@Field final String APP_UPDATED = "2025-10-27"    // ISO date is clean
+@Field final String APP_NAME    = "Circadian Hub Variables"
+@Field final String APP_VERSION = "2.0.0"
+@Field final String APP_BRANCH  = "work"          // or "feature-dimmer-rise-tuning"
+@Field final String APP_UPDATED = "2025-10-26"    // ISO date is clean
 
 definition(
     name: APP_NAME,
@@ -143,18 +143,16 @@ def updateNow() {
     BigDecimal bedWarmBD     = settingDecimal("bedWarmCT", 2700G)
 
     Long plateauMillis = minutesToMillis(settings.middayPlateauMins, 60G)
-    Long plateauHalf   = (plateauMillis != null && plateauMillis > 0L) ? (plateauMillis.longValue() / 2L) : 0L
+    Long plateauHalf   = Math.max(0L, plateauMillis / 2L)
     Long ctHeadStartMs = minutesToMillis(settings.ctEveningHeadStartMins, 60G)
     Long dimLagMs      = minutesToMillis(settings.dimEveningLagMins, 30G)
     Long bedWindowMs   = minutesToMillis(settings.bedWindowMins, 120G)
 
-    long noonTime = sun.noon.time
-    Date noonA       = new Date(noonTime - plateauHalf.longValue())
-    Date noonB       = new Date(noonTime + plateauHalf.longValue())
-    long eveningStartTime = sun.eveningStart.time
-    Date ctEveStart  = new Date(eveningStartTime - ctHeadStartMs.longValue())
-    Date dimEveStart = new Date(eveningStartTime + dimLagMs.longValue())
-    Date bedStart    = new Date(winEnd.time - bedWindowMs.longValue())
+    Date noonA       = new Date(sun.noon.time - plateauHalf)
+    Date noonB       = new Date(sun.noon.time + plateauHalf)
+    Date ctEveStart  = new Date(sun.eveningStart.time - ctHeadStartMs)
+    Date dimEveStart = new Date(sun.eveningStart.time + dimLagMs)
+    Date bedStart    = new Date(winEnd.time - bedWindowMs)
 
     Map anchors = [noonA: noonA, noonB: noonB, ctEveStart: ctEveStart, dimEveStart: dimEveStart, bedStart: bedStart]
 
