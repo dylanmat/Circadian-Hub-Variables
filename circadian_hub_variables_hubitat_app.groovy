@@ -2,7 +2,7 @@ import groovy.transform.Field
 
 @Field final String APP_NAME    = "Circadian Hub Variables Test"
 @Field final String APP_VERSION = "2.0.1"
-@Field final String APP_BRANCH  = "codex/add-wellness-aware-circadian-curve-features"
+@Field final String APP_BRANCH  = "codex/add-wellness-aware-circadian-curve-features-hyrhnz"
 @Field final String APP_UPDATED = "2025-10-27"    // ISO date is clean
 
 definition(
