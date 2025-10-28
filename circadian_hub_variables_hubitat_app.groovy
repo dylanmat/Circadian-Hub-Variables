@@ -1,8 +1,8 @@
 import groovy.transform.Field
 
 @Field final String APP_NAME    = "Circadian Hub Variables"
-@Field final String APP_VERSION = "1.3.4"
-@Field final String APP_BRANCH  = "main"          // or "feature-dimmer-rise-tuning"
+@Field final String APP_VERSION = "2.0.0"
+@Field final String APP_BRANCH  = "codex/add-wellness-aware-circadian-curve-features"
 @Field final String APP_UPDATED = "2025-10-26"    // ISO date is clean
 
 definition(
@@ -47,6 +47,15 @@ Map mainPage() {
             input name: "maxDim", type: "number", title: "Daytime dimmer maximum (%)", range: "1..100", defaultValue: 100, required: true
             input name: "minCT",  type: "number", title: "Evening color temp minimum (K)", range: "2000..6500", defaultValue: 2000, required: true
             input name: "maxCT",  type: "number", title: "Daytime color temp maximum (K)", range: "2000..6500", defaultValue: 6500, required: true
+        }
+        section("Wellness Tuning") {
+            input name: "ctMorningExponent", type: "decimal", title: "CT morning exponent", range: "0.2..5.0", defaultValue: 1.6, required: true
+            input name: "dimMorningExponent", type: "decimal", title: "Dimmer morning exponent", range: "0.2..5.0", defaultValue: 0.7, required: true
+            input name: "ctEveningHeadStartMins", type: "number", title: "CT evening head start (mins)", defaultValue: 60, required: true
+            input name: "dimEveningLagMins", type: "number", title: "Dimmer evening lag (mins)", defaultValue: 30, required: true
+            input name: "middayPlateauMins", type: "number", title: "Midday plateau length (mins)", defaultValue: 60, required: true
+            input name: "bedWarmCT", type: "number", title: "Bedtime warm CT cap (K)", defaultValue: 2700, required: true
+            input name: "bedWindowMins", type: "number", title: "Bedtime window length (mins)", defaultValue: 120, required: true
         }
         section("Update & Behavior") {
             input name: "updateEveryMin", type: "bool",   title: "Update every minute (recommended)", defaultValue: true
@@ -124,9 +133,37 @@ def updateNow() {
         return
     }
 
+    BigDecimal minDimBD = settingDecimal("minDim", 20G)
+    BigDecimal maxDimBD = settingDecimal("maxDim", 100G)
+    BigDecimal minCTBD  = settingDecimal("minCT", 2000G)
+    BigDecimal maxCTBD  = settingDecimal("maxCT", 6500G)
+
+    BigDecimal dimMorningExp = settingDecimal("dimMorningExponent", 0.7G)
+    BigDecimal ctMorningExp  = settingDecimal("ctMorningExponent", 1.6G)
+    BigDecimal bedWarmBD     = settingDecimal("bedWarmCT", 2700G)
+
+    Long plateauMillis = minutesToMillis(settings.middayPlateauMins, 60G)
+    Long plateauHalf   = (plateauMillis != null && plateauMillis > 0L) ? (plateauMillis.longValue() / 2L) : 0L
+    Long ctHeadStartMs = minutesToMillis(settings.ctEveningHeadStartMins, 60G)
+    Long dimLagMs      = minutesToMillis(settings.dimEveningLagMins, 30G)
+    Long bedWindowMs   = minutesToMillis(settings.bedWindowMins, 120G)
+
+    long noonTime = sun.noon.time
+    Date noonA       = new Date(noonTime - plateauHalf.longValue())
+    Date noonB       = new Date(noonTime + plateauHalf.longValue())
+    long eveningStartTime = sun.eveningStart.time
+    Date ctEveStart  = new Date(eveningStartTime - ctHeadStartMs.longValue())
+    Date dimEveStart = new Date(eveningStartTime + dimLagMs.longValue())
+    Date bedStart    = new Date(winEnd.time - bedWindowMs.longValue())
+
+    Map anchors = [noonA: noonA, noonB: noonB, ctEveStart: ctEveStart, dimEveStart: dimEveStart, bedStart: bedStart]
+
     // Build eased targets
-    BigDecimal dimmer = computeDimmer(now, sun, winStart, winEnd)
-    BigDecimal ctemp  = computeCT(now, sun, winStart, winEnd)
+    BigDecimal dimmer = computeDimmer(now, sun, winStart, winEnd, anchors, minDimBD, maxDimBD, dimMorningExp)
+    BigDecimal ctemp  = computeCT(now, sun, winStart, winEnd, anchors, minCTBD, maxCTBD, ctMorningExp, bedWarmBD)
+
+    dimmer = clamp(dimmer, minDimBD, maxDimBD)
+    ctemp  = clamp(ctemp,  minCTBD,  maxCTBD)
 
     if (snapToInt) {
         dimmer = (dimmer as BigDecimal).setScale(0, BigDecimal.ROUND_HALF_UP)
@@ -215,49 +252,90 @@ private BigDecimal lerp(BigDecimal a, BigDecimal b, BigDecimal t) { a + (b - a) 
 
 private BigDecimal clamp(BigDecimal v, BigDecimal a, BigDecimal b) { [a, v, b].sort()[1] as BigDecimal }
 
+private BigDecimal powFraction(BigDecimal t, BigDecimal exponent) {
+    BigDecimal clamped = clamp(t ?: 0G, 0G, 1G)
+    BigDecimal exp = (exponent && exponent > 0G) ? exponent : 1G
+    double result = Math.pow(clamped.doubleValue(), exp.doubleValue())
+    return BigDecimal.valueOf(result)
+}
+
+private BigDecimal settingDecimal(String name, BigDecimal defaultVal) {
+    def raw = settings[name]
+    if (raw == null) return defaultVal
+    try {
+        return raw as BigDecimal
+    } catch (ignored) {
+        return defaultVal
+    }
+}
+
+private Long minutesToMillis(def minutesVal, BigDecimal defaultVal) {
+    BigDecimal mins
+    if (minutesVal == null) {
+        mins = defaultVal
+    } else {
+        mins = minutesVal as BigDecimal
+    }
+    if (mins < 0G) mins = 0G
+    BigDecimal millis = mins * 60000G
+    return millis.setScale(0, BigDecimal.ROUND_HALF_UP).longValue()
+}
+
 /** Dimmer logic */
-private BigDecimal computeDimmer(Date now, Map sun, Date winStart, Date winEnd) {
-    BigDecimal minP = (minDim ?: 20) as BigDecimal
-    BigDecimal maxP = (maxDim ?: 100) as BigDecimal
+private BigDecimal computeDimmer(Date now, Map sun, Date winStart, Date winEnd, Map anchors,
+                                 BigDecimal minP, BigDecimal maxP, BigDecimal morningExponent) {
+    BigDecimal startLevel = lerp(minP, maxP, 0.60G)
+    BigDecimal lateDay    = lerp(minP, maxP, 0.85G)
 
-    BigDecimal midStart = lerp(minP, maxP, 0.60G)
-
-    if (now.before(sun.noon)) {
-        BigDecimal t = frac(now, winStart, sun.noon)
-        return lerp(midStart, maxP, ease(t))
-    } else if (now.before(sun.eveningStart)) {
-        BigDecimal t = frac(now, sun.noon, sun.eveningStart)
-        BigDecimal dayHold = lerp(maxP, lerp(minP, maxP, 0.85G), ease(t))
-        return dayHold
+    if (now.before(anchors.noonA)) {
+        BigDecimal t = frac(now, winStart, anchors.noonA)
+        BigDecimal shaped = powFraction(t, morningExponent)
+        return lerp(startLevel, maxP, shaped)
+    } else if (now.before(anchors.noonB)) {
+        return maxP
+    } else if (now.before(anchors.dimEveStart)) {
+        BigDecimal t = frac(now, anchors.noonB, anchors.dimEveStart)
+        BigDecimal eased = ease(t)
+        return lerp(maxP, lateDay, eased)
     } else if (now.before(winEnd)) {
-        BigDecimal t = frac(now, sun.eveningStart, winEnd)
-        return lerp(lerp(minP, maxP, 0.85G), minP, ease(t))
+        BigDecimal t = frac(now, anchors.dimEveStart, winEnd)
+        BigDecimal eased = ease(t)
+        return lerp(lateDay, minP, eased)
     } else {
         return minP
     }
 }
 
 /** Color Temp logic (Kelvin) */
-private BigDecimal computeCT(Date now, Map sun, Date winStart, Date winEnd) {
-    BigDecimal lo = (minCT ?: 2000) as BigDecimal
-    BigDecimal hi = (maxCT ?: 6500) as BigDecimal
+private BigDecimal computeCT(Date now, Map sun, Date winStart, Date winEnd, Map anchors,
+                             BigDecimal lo, BigDecimal hi, BigDecimal morningExponent, BigDecimal bedWarm) {
+    BigDecimal daySlightWarm = lerp(lo, hi, 0.92G)
+    BigDecimal bedWarmClamped = clamp(bedWarm, lo, hi)
 
-    BigDecimal startCT = lerp(lo, hi, 0.75G)
-
-    if (now.before(sun.morningEnd)) {
-        BigDecimal t = frac(now, winStart, sun.morningEnd)
-        return lerp(startCT, hi, ease(t))
-    } else if (now.before(sun.eveningStart)) {
-        BigDecimal t = frac(now, sun.morningEnd, sun.eveningStart)
-        BigDecimal dayHi = hi
-        BigDecimal dayLo = clamp(hi - 300G, lo, hi)
-        return lerp(dayHi, dayLo, ease(t))
+    BigDecimal result
+    if (now.before(anchors.noonA)) {
+        BigDecimal t = frac(now, winStart, anchors.noonA)
+        BigDecimal shaped = powFraction(t, morningExponent)
+        result = lerp(lo, hi, shaped)
+    } else if (now.before(anchors.noonB)) {
+        result = hi
+    } else if (now.before(anchors.ctEveStart)) {
+        BigDecimal t = frac(now, anchors.noonB, anchors.ctEveStart)
+        BigDecimal eased = ease(t)
+        result = lerp(hi, daySlightWarm, eased)
     } else if (now.before(winEnd)) {
-        BigDecimal t = frac(now, sun.eveningStart, winEnd)
-        return lerp(hi - 300G, lo, ease(t))
+        BigDecimal t = frac(now, anchors.ctEveStart, winEnd)
+        BigDecimal eased = ease(t)
+        result = lerp(daySlightWarm, lo, eased)
     } else {
-        return lo
+        result = lo
     }
+
+    if (now.time >= anchors.bedStart.time) {
+        result = [result, bedWarmClamped].min() as BigDecimal
+    }
+
+    return result
 }
 
 // Returns 0..1 fraction between two Dates (clamped)
