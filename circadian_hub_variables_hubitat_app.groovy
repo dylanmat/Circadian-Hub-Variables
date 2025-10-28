@@ -3,7 +3,7 @@ import groovy.transform.Field
 @Field final String APP_NAME    = "Circadian Hub Variables"
 @Field final String APP_VERSION = "2.0.2"
 @Field final String APP_BRANCH  = "main"
-@Field final String APP_UPDATED = "2025-10-28"    // ISO date is clean
+@Field final String APP_UPDATED = "2025-10-27"    // ISO date is clean
 
 definition(
     name: APP_NAME,
@@ -45,8 +45,8 @@ Map mainPage() {
         section("Targets & Limits") {
             input name: "minDim", type: "number", title: "Evening dimmer minimum (%)", range: "1..100", defaultValue: 20, required: true
             input name: "maxDim", type: "number", title: "Daytime dimmer maximum (%)", range: "1..100", defaultValue: 100, required: true
-            input name: "minCT",  type: "number", title: "Evening color temp minimum (K)", range: "2000..6500", defaultValue: 2000, required: true
-            input name: "maxCT",  type: "number", title: "Daytime color temp maximum (K)", range: "2000..6500", defaultValue: 6500, required: true
+            input name: "minCT",  type: "number", title: "Evening color temp minimum (K)", range: "1500..4000", defaultValue: 2000, required: true
+            input name: "maxCT",  type: "number", title: "Daytime color temp maximum (K)", range: "4500..8000", defaultValue: 6500, required: true
         }
         section("Wellness Tuning") {
             input name: "ctMorningExponent", type: "decimal", title: "CT morning exponent", range: "0.2..5.0", defaultValue: 1.6, required: true
