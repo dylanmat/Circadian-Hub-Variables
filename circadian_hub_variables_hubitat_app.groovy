@@ -1,7 +1,7 @@
 import groovy.transform.Field
 
 @Field final String APP_NAME    = "Circadian Hub Variables"
-@Field final String APP_VERSION = "2.0.2"
+@Field final String APP_VERSION = "2.0.3"
 @Field final String APP_BRANCH  = "main"
 @Field final String APP_UPDATED = "2025-10-27"    // ISO date is clean
 
@@ -49,7 +49,7 @@ Map mainPage() {
             input name: "maxCT",  type: "number", title: "Daytime color temp maximum (K)", range: "4500..8000", defaultValue: 6500, required: true
         }
         section("Wellness Tuning") {
-            input name: "ctMorningExponent", type: "decimal", title: "CT morning exponent", range: "0.2..5.0", defaultValue: 1.6, required: true
+            input name: "ctMorningExponent", type: "decimal", title: "CT morning exponent (higher = faster)", range: "0.2..5.0", defaultValue: 1.6, required: true
             input name: "dimMorningExponent", type: "decimal", title: "Dimmer morning exponent", range: "0.2..5.0", defaultValue: 0.7, required: true
             input name: "ctEveningHeadStartMins", type: "number", title: "CT evening head start (mins)", defaultValue: 60, required: true
             input name: "dimEveningLagMins", type: "number", title: "Dimmer evening lag (mins)", defaultValue: 30, required: true
@@ -259,6 +259,23 @@ private BigDecimal powFraction(BigDecimal t, BigDecimal exponent) {
     return BigDecimal.valueOf(result)
 }
 
+// Half-period sine wave (start/end slope ≈ 0) mapping 0..1 → 0..1
+private BigDecimal sineWave(BigDecimal t) {
+    BigDecimal clamped = clamp(t ?: 0G, 0G, 1G)
+    double theta = (-Math.PI / 2d) + (Math.PI * clamped.doubleValue())
+    double result = (Math.sin(theta) + 1d) / 2d
+    return BigDecimal.valueOf(result)
+}
+
+// Re-map exponent so larger values accelerate the morning rise (fixes v2.0.3 color temp curve)
+private BigDecimal morningExponentAdjusted(BigDecimal exponent) {
+    if (!(exponent && exponent > 0G)) {
+        return 1G
+    }
+    double adjusted = 1d / exponent.doubleValue()
+    return BigDecimal.valueOf(adjusted)
+}
+
 private BigDecimal settingDecimal(String name, BigDecimal defaultVal) {
     def raw = settings[name]
     if (raw == null) return defaultVal
@@ -315,17 +332,19 @@ private BigDecimal computeCT(Date now, Map sun, Date winStart, Date winEnd, Map 
     BigDecimal result
     if (now.before(anchors.noonA)) {
         BigDecimal t = frac(now, winStart, anchors.noonA)
-        BigDecimal shaped = powFraction(t, morningExponent)
+        BigDecimal morningBase = sineWave(t)
+        BigDecimal curveExp = morningExponentAdjusted(morningExponent)
+        BigDecimal shaped = powFraction(morningBase, curveExp)
         result = lerp(lo, hi, shaped)
     } else if (now.before(anchors.noonB)) {
         result = hi
     } else if (now.before(anchors.ctEveStart)) {
         BigDecimal t = frac(now, anchors.noonB, anchors.ctEveStart)
-        BigDecimal eased = ease(t)
+        BigDecimal eased = sineWave(t)
         result = lerp(hi, daySlightWarm, eased)
     } else if (now.before(winEnd)) {
         BigDecimal t = frac(now, anchors.ctEveStart, winEnd)
-        BigDecimal eased = ease(t)
+        BigDecimal eased = sineWave(t)
         result = lerp(daySlightWarm, lo, eased)
     } else {
         result = lo
