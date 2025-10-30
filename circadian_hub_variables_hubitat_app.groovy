@@ -1,9 +1,9 @@
 import groovy.transform.Field
 
 @Field final String APP_NAME    = "Circadian Hub Variables"
-@Field final String APP_VERSION = "2.0.3"
+@Field final String APP_VERSION = "2.0.4"
 @Field final String APP_BRANCH  = "main"
-@Field final String APP_UPDATED = "2025-10-27"    // ISO date is clean
+@Field final String APP_UPDATED = "2025-10-29"    // ISO date is clean
 
 definition(
     name: APP_NAME,
@@ -33,35 +33,33 @@ Map mainPage() {
             if (!numNames) {
                 paragraph "No numeric Hub Variables found. Create them first in Settings → Hub Variables (type integer or bigdecimal)."
             }
-            input name: "dimmerVarName", type: "enum", options: numNames, title: "Dimmer % Hub Variable", required: true, submitOnChange: true
-            input name: "ctVarName",     type: "enum", options: numNames, title: "Color Temp (K) Hub Variable", required: true, submitOnChange: true
+            input name: "dimmerVarName", type: "enum", options: numNames, title: "Dimmer % Hub Variable (integer/bigdecimal)", required: true, submitOnChange: true
+            input name: "ctVarName",     type: "enum", options: numNames, title: "Color Temp (K) Hub Variable (integer/bigdecimal)", required: true, submitOnChange: true
         }
         section("Time Window & Curves") {
-            input name: "startTimeStr", type: "time", title: "Active window start", required: true, defaultValue: "05:30"
-            input name: "endTimeStr",   type: "time", title: "Active window end", required: true, defaultValue: "22:30"
-            input name: "morningRampMins", type: "number", title: "Minutes after sunrise to finish reaching daytime values", range: "0..360", defaultValue: 90, required: true
-            input name: "eveningRampMins", type: "number", title: "Minutes before sunset to begin transitioning to evening values", range: "0..360", defaultValue: 120, required: true
+            input name: "startTimeStr", type: "time", title: "Active window start (HH:MM — earliest adjustments begin)", required: true, defaultValue: "05:30"
+            input name: "endTimeStr",   type: "time", title: "Active window end (HH:MM — final targets reached)", required: true, defaultValue: "22:30"
+            input name: "workdayPeakTimeStr", type: "time", title: "Workday daylight target time (HH:MM — reach daytime levels by this time)", required: true, defaultValue: "08:00"
+            input name: "eveningTransitionTimeStr", type: "time", title: "Evening wind‑down start (HH:MM — begin warming + dimming)", required: true, defaultValue: "18:30"
         }
         section("Targets & Limits") {
-            input name: "minDim", type: "number", title: "Evening dimmer minimum (%)", range: "1..100", defaultValue: 20, required: true
-            input name: "maxDim", type: "number", title: "Daytime dimmer maximum (%)", range: "1..100", defaultValue: 100, required: true
-            input name: "minCT",  type: "number", title: "Evening color temp minimum (K)", range: "1500..4000", defaultValue: 2000, required: true
-            input name: "maxCT",  type: "number", title: "Daytime color temp maximum (K)", range: "4500..8000", defaultValue: 6500, required: true
+            input name: "minDim", type: "number", title: "Evening dimmer minimum (%) — lower = darker nights", range: "1..100", defaultValue: 20, required: true
+            input name: "maxDim", type: "number", title: "Daytime dimmer maximum (%) — higher = brighter days", range: "1..100", defaultValue: 100, required: true
+            input name: "minCT",  type: "number", title: "Evening color temp minimum (K) — smaller = warmer", range: "1500..4000", defaultValue: 2000, required: true
+            input name: "maxCT",  type: "number", title: "Daytime color temp maximum (K) — larger = cooler", range: "4500..8000", defaultValue: 6500, required: true
         }
         section("Wellness Tuning") {
-            input name: "ctMorningExponent", type: "decimal", title: "CT morning exponent (higher = faster)", range: "0.2..5.0", defaultValue: 1.6, required: true
-            input name: "dimMorningExponent", type: "decimal", title: "Dimmer morning exponent", range: "0.2..5.0", defaultValue: 0.7, required: true
-            input name: "ctEveningHeadStartMins", type: "number", title: "CT evening head start (mins)", defaultValue: 60, required: true
-            input name: "dimEveningLagMins", type: "number", title: "Dimmer evening lag (mins)", defaultValue: 30, required: true
-            input name: "middayPlateauMins", type: "number", title: "Midday plateau length (mins)", defaultValue: 60, required: true
-            input name: "bedWarmCT", type: "number", title: "Bedtime warm CT cap (K)", defaultValue: 2700, required: true
-            input name: "bedWindowMins", type: "number", title: "Bedtime window length (mins)", defaultValue: 120, required: true
+            input name: "ctMorningExponent", type: "decimal", title: "CT morning exponent — higher = faster ramp, lower = gentler", range: "0.2..5.0", defaultValue: 1.6, required: true
+            input name: "dimMorningExponent", type: "decimal", title: "Dimmer morning exponent — higher = faster ramp", range: "0.2..5.0", defaultValue: 0.7, required: true
+            input name: "ctEveningHeadStartMins", type: "number", title: "CT evening head start (mins) — larger = earlier warm shift", defaultValue: 60, required: true
+            input name: "dimEveningLagMins", type: "number", title: "Dimmer evening lag (mins) — larger = later dimming", defaultValue: 30, required: true
+            input name: "middayPlateauMins", type: "number", title: "Midday plateau length (mins) — 0 disables the flat top", defaultValue: 60, required: true
         }
         section("Update & Behavior") {
-            input name: "updateEveryMin", type: "bool",   title: "Update every minute (recommended)", defaultValue: true
-            input name: "updateSecs",     type: "number", title: "If not every minute, update every N seconds (min 10)", range: "10..3600", defaultValue: 60, required: false
-            input name: "onlyWithinWindow", type: "bool", title: "Only write variables within active window (leave values untouched outside)", defaultValue: true
-            input name: "snapToInt",      type: "bool",   title: "Write integers (no decimals)", defaultValue: true
+            input name: "updateEveryMin", type: "bool",   title: "Update every minute (recommended for smoothest curve)", defaultValue: true
+            input name: "updateSecs",     type: "number", title: "If not every minute, update every N seconds (10‑3600, larger = slower)", range: "10..3600", defaultValue: 60, required: false
+            input name: "onlyWithinWindow", type: "bool", title: "Only write variables within active window (values stay put outside)", defaultValue: true
+            input name: "snapToInt",      type: "bool",   title: "Write integers (no decimals) — best for Hub Variables", defaultValue: true
             input name: "logDebug",       type: "bool",   title: "Enable debug logging (auto‑disables in 30m)", defaultValue: false
         }
     }
@@ -140,13 +138,11 @@ def updateNow() {
 
     BigDecimal dimMorningExp = settingDecimal("dimMorningExponent", 0.7G)
     BigDecimal ctMorningExp  = settingDecimal("ctMorningExponent", 1.6G)
-    BigDecimal bedWarmBD     = settingDecimal("bedWarmCT", 2700G)
 
     Long plateauMillis = minutesToMillis(settings.middayPlateauMins, 60G)
     Long plateauHalf   = (plateauMillis != null && plateauMillis > 0L) ? (plateauMillis.longValue() / 2L) : 0L
     Long ctHeadStartMs = minutesToMillis(settings.ctEveningHeadStartMins, 60G)
     Long dimLagMs      = minutesToMillis(settings.dimEveningLagMins, 30G)
-    Long bedWindowMs   = minutesToMillis(settings.bedWindowMins, 120G)
 
     long noonTime = sun.noon.time
     Date noonA       = new Date(noonTime - plateauHalf.longValue())
@@ -154,13 +150,17 @@ def updateNow() {
     long eveningStartTime = sun.eveningStart.time
     Date ctEveStart  = new Date(eveningStartTime - ctHeadStartMs.longValue())
     Date dimEveStart = new Date(eveningStartTime + dimLagMs.longValue())
-    Date bedStart    = new Date(winEnd.time - bedWindowMs.longValue())
 
-    Map anchors = [noonA: noonA, noonB: noonB, ctEveStart: ctEveStart, dimEveStart: dimEveStart, bedStart: bedStart]
+    if (ctEveStart.before(noonB)) ctEveStart = noonB
+    if (ctEveStart.after(winEnd)) ctEveStart = winEnd
+    if (dimEveStart.before(ctEveStart)) dimEveStart = ctEveStart
+    if (dimEveStart.after(winEnd)) dimEveStart = winEnd
+
+    Map anchors = [noonA: noonA, noonB: noonB, ctEveStart: ctEveStart, dimEveStart: dimEveStart]
 
     // Build eased targets
     BigDecimal dimmer = computeDimmer(now, sun, winStart, winEnd, anchors, minDimBD, maxDimBD, dimMorningExp)
-    BigDecimal ctemp  = computeCT(now, sun, winStart, winEnd, anchors, minCTBD, maxCTBD, ctMorningExp, bedWarmBD)
+    BigDecimal ctemp  = computeCT(now, sun, winStart, winEnd, anchors, minCTBD, maxCTBD, ctMorningExp)
 
     dimmer = clamp(dimmer, minDimBD, maxDimBD)
     ctemp  = clamp(ctemp,  minCTBD,  maxCTBD)
@@ -216,20 +216,25 @@ private Map getTodaySunTimes() {
     Date sunrise = s.sunrise instanceof Date ? s.sunrise : new Date(s.sunrise.time)
     Date sunset  = s.sunset  instanceof Date ? s.sunset  : new Date(s.sunset.time)
 
-    Integer mRamp = (morningRampMins ?: 90) as Integer
-    Integer eRamp = (eveningRampMins ?: 120) as Integer
+    Date winStart = timeToday(startTimeStr ?: "05:30")
+    Date winEnd   = timeToday(endTimeStr   ?: "22:30")
 
-    Date morningEnd   = new Date(sunrise.time + (mRamp * 60 * 1000L))
-    Date eveningStart = new Date(sunset.time  - (eRamp * 60 * 1000L))
+    Date workdayPeak = timeToday(settings.workdayPeakTimeStr ?: "08:00")
+    Date eveningStart = timeToday(settings.eveningTransitionTimeStr ?: "18:30")
+
+    if (workdayPeak.before(winStart)) workdayPeak = winStart
+    if (workdayPeak.after(winEnd))   workdayPeak = winEnd
+    if (eveningStart.before(workdayPeak)) eveningStart = workdayPeak
+    if (eveningStart.after(winEnd))       eveningStart = winEnd
 
     Long noonMillis = (sunrise.time + sunset.time) / 2L
     Date solarNoon = new Date(noonMillis)
 
-    [sunrise: sunrise, morningEnd: morningEnd, eveningStart: eveningStart, sunset: sunset, noon: solarNoon]
+    [sunrise: sunrise, morningEnd: workdayPeak, eveningStart: eveningStart, sunset: sunset, noon: solarNoon]
 }
 
 private String sunriseSunsetSummary(Map s) {
-    ["rise ${fmtTime(s.sunrise)}", "noon ${fmtTime(s.noon)}", "eveStart ${fmtTime(s.eveningStart)}", "set ${fmtTime(s.sunset)}"].join(", ")
+    ["rise ${fmtTime(s.sunrise)}", "dayPeak ${fmtTime(s.morningEnd)}", "windDown ${fmtTime(s.eveningStart)}", "set ${fmtTime(s.sunset)}"].join(", ")
 }
 
 private String fmtTime(Date d) { d?.format("HH:mm") }
@@ -325,9 +330,8 @@ private BigDecimal computeDimmer(Date now, Map sun, Date winStart, Date winEnd, 
 
 /** Color Temp logic (Kelvin) */
 private BigDecimal computeCT(Date now, Map sun, Date winStart, Date winEnd, Map anchors,
-                             BigDecimal lo, BigDecimal hi, BigDecimal morningExponent, BigDecimal bedWarm) {
+                             BigDecimal lo, BigDecimal hi, BigDecimal morningExponent) {
     BigDecimal daySlightWarm = lerp(lo, hi, 0.92G)
-    BigDecimal bedWarmClamped = clamp(bedWarm, lo, hi)
 
     BigDecimal result
     if (now.before(anchors.noonA)) {
@@ -348,10 +352,6 @@ private BigDecimal computeCT(Date now, Map sun, Date winStart, Date winEnd, Map 
         result = lerp(daySlightWarm, lo, eased)
     } else {
         result = lo
-    }
-
-    if (now.time >= anchors.bedStart.time) {
-        result = [result, bedWarmClamped].min() as BigDecimal
     }
 
     return result
