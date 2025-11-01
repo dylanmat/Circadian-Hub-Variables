@@ -1,9 +1,9 @@
 import groovy.transform.Field
 
 @Field final String APP_NAME    = "Circadian Hub Variables"
-@Field final String APP_VERSION = "2.0.4"
+@Field final String APP_VERSION = "2.0.5a"
 @Field final String APP_BRANCH  = "main"
-@Field final String APP_UPDATED = "2025-10-29"    // ISO date is clean
+@Field final String APP_UPDATED = "2025-11-01"    // ISO date is clean
 
 definition(
     name: APP_NAME,
@@ -43,10 +43,10 @@ Map mainPage() {
             input name: "eveningTransitionTimeStr", type: "time", title: "Evening wind‑down start (HH:MM — begin warming + dimming)", required: true, defaultValue: "18:30"
         }
         section("Targets & Limits") {
-            input name: "minDim", type: "number", title: "Evening dimmer minimum (%) — lower = darker nights", range: "1..100", defaultValue: 20, required: true
-            input name: "maxDim", type: "number", title: "Daytime dimmer maximum (%) — higher = brighter days", range: "1..100", defaultValue: 100, required: true
-            input name: "minCT",  type: "number", title: "Evening color temp minimum (K) — smaller = warmer", range: "1500..4000", defaultValue: 2000, required: true
-            input name: "maxCT",  type: "number", title: "Daytime color temp maximum (K) — larger = cooler", range: "4500..8000", defaultValue: 6500, required: true
+            input name: "minDim", type: "enum", options: numNames, title: "Evening dimmer minimum (%) Hub Variable — expected value 1-100", required: true, submitOnChange: true
+            input name: "maxDim", type: "enum", options: numNames, title: "Daytime dimmer maximum (%) Hub Variable — expected value 1-100", required: true, submitOnChange: true
+            input name: "minCT",  type: "enum", options: numNames, title: "Evening color temp minimum (K) Hub Variable — expected value 1500-4000", required: true, submitOnChange: true
+            input name: "maxCT",  type: "enum", options: numNames, title: "Daytime color temp maximum (K) Hub Variable — expected value 4500-8000", required: true, submitOnChange: true
         }
         section("Wellness Tuning") {
             input name: "ctMorningExponent", type: "decimal", title: "CT morning exponent — higher = faster ramp, lower = gentler", range: "0.2..5.0", defaultValue: 1.6, required: true
@@ -82,12 +82,20 @@ def updated() {
 def uninstalled() {
     try { if(dimmerVarName) removeInUseGlobalVar(dimmerVarName) } catch (ignored) {}
     try { if(ctVarName) removeInUseGlobalVar(ctVarName) } catch (ignored) {}
+    try { if(minDim) removeInUseGlobalVar(minDim) } catch (ignored) {}
+    try { if(maxDim) removeInUseGlobalVar(maxDim) } catch (ignored) {}
+    try { if(minCT)  removeInUseGlobalVar(minCT)  } catch (ignored) {}
+    try { if(maxCT)  removeInUseGlobalVar(maxCT)  } catch (ignored) {}
 }
 
 def initialize() {
     if (logDebug) runIn(1800, "logsOff")
     try { if(dimmerVarName) addInUseGlobalVar(dimmerVarName) } catch (ignored) {}
     try { if(ctVarName) addInUseGlobalVar(ctVarName) } catch (ignored) {}
+    try { if(minDim) addInUseGlobalVar(minDim) } catch (ignored) {}
+    try { if(maxDim) addInUseGlobalVar(maxDim) } catch (ignored) {}
+    try { if(minCT)  addInUseGlobalVar(minCT)  } catch (ignored) {}
+    try { if(maxCT)  addInUseGlobalVar(maxCT)  } catch (ignored) {}
     scheduleUpdaters()
     runIn(2, "updateNow")
 }
@@ -131,10 +139,10 @@ def updateNow() {
         return
     }
 
-    BigDecimal minDimBD = settingDecimal("minDim", 20G)
-    BigDecimal maxDimBD = settingDecimal("maxDim", 100G)
-    BigDecimal minCTBD  = settingDecimal("minCT", 2000G)
-    BigDecimal maxCTBD  = settingDecimal("maxCT", 6500G)
+    BigDecimal minDimBD = hubVarDecimal("minDim", 20G)
+    BigDecimal maxDimBD = hubVarDecimal("maxDim", 100G)
+    BigDecimal minCTBD  = hubVarDecimal("minCT", 2000G)
+    BigDecimal maxCTBD  = hubVarDecimal("maxCT", 6500G)
 
     BigDecimal dimMorningExp = settingDecimal("dimMorningExponent", 0.7G)
     BigDecimal ctMorningExp  = settingDecimal("ctMorningExponent", 1.6G)
@@ -180,17 +188,34 @@ def updateNow() {
 }
 
 private boolean validateVars() {
-    String[] names = [dimmerVarName, ctVarName]
-    for (String n : names) {
-        if (!n) { log.warn "Hub Variable name is missing."; return false }
-        def gv = null
-        try { gv = getGlobalVar(n) } catch (ignored) {}
-        if (!gv) { log.warn "Hub Variable '${n}' not found. Create it first in Settings → Hub Variables."; return false }
-        if (!(gv.type in ["integer", "bigdecimal"])) {
-            log.warn "Hub Variable '${n}' should be type integer or bigdecimal; found '${gv.type}'."
-        }
+    boolean ok = true
+
+    if (!validateNumericVar(dimmerVarName, "Dimmer % output")) ok = false
+    if (!validateNumericVar(ctVarName, "Color Temp (K) output")) ok = false
+    if (!validateSettingVarWithinRange("minDim", "Evening dimmer minimum (%)", 1G, 100G)) ok = false
+    if (!validateSettingVarWithinRange("maxDim", "Daytime dimmer maximum (%)", 1G, 100G)) ok = false
+    if (!validateSettingVarWithinRange("minCT",  "Evening color temp minimum (K)", 1500G, 4000G)) ok = false
+    if (!validateSettingVarWithinRange("maxCT",  "Daytime color temp maximum (K)", 4500G, 8000G)) ok = false
+
+    if (!ok) {
+        return false
     }
-    return true
+
+    BigDecimal minDimVal = readGlobalVarDecimal(settings.minDim)
+    BigDecimal maxDimVal = readGlobalVarDecimal(settings.maxDim)
+    if (minDimVal != null && maxDimVal != null && minDimVal > maxDimVal) {
+        log.warn "Evening dimmer minimum (%) should be less than or equal to daytime maximum."
+        ok = false
+    }
+
+    BigDecimal minCTVal = readGlobalVarDecimal(settings.minCT)
+    BigDecimal maxCTVal = readGlobalVarDecimal(settings.maxCT)
+    if (minCTVal != null && maxCTVal != null && minCTVal > maxCTVal) {
+        log.warn "Evening color temp minimum (K) should be less than or equal to daytime maximum."
+        ok = false
+    }
+
+    return ok
 }
 
 private void writeHubVar(String name, BigDecimal val) {
@@ -279,6 +304,78 @@ private BigDecimal morningExponentAdjusted(BigDecimal exponent) {
     }
     double adjusted = 1d / exponent.doubleValue()
     return BigDecimal.valueOf(adjusted)
+}
+
+private boolean validateNumericVar(String varName, String description) {
+    if (!varName) {
+        log.warn "${description} Hub Variable is not selected."
+        return false
+    }
+
+    def gv = safeGetGlobalVar(varName)
+    if (!gv) {
+        log.warn "Hub Variable '${varName}' for ${description} not found. Create it first in Settings → Hub Variables."
+        return false
+    }
+
+    if (!(gv.type in ["integer", "bigdecimal"])) {
+        log.warn "Hub Variable '${varName}' for ${description} must be type integer or bigdecimal; found '${gv.type}'."
+        return false
+    }
+
+    BigDecimal value = readGlobalVarDecimal(varName)
+    if (value == null) {
+        log.warn "Hub Variable '${varName}' for ${description} does not contain a numeric value."
+        return false
+    }
+
+    return true
+}
+
+private boolean validateSettingVarWithinRange(String settingKey, String description, BigDecimal min, BigDecimal max) {
+    String varName = settings[settingKey]
+    if (!validateNumericVar(varName, description)) {
+        return false
+    }
+
+    BigDecimal value = readGlobalVarDecimal(varName)
+    if (value == null) {
+        return false
+    }
+
+    if (value < min || value > max) {
+        log.warn "Hub Variable '${varName}' for ${description} should be between ${min} and ${max}; found ${value}."
+        return false
+    }
+
+    return true
+}
+
+private BigDecimal hubVarDecimal(String settingName, BigDecimal defaultVal) {
+    String varName = settings[settingName]
+    BigDecimal value = readGlobalVarDecimal(varName)
+    return value != null ? value : defaultVal
+}
+
+private BigDecimal readGlobalVarDecimal(String varName) {
+    if (!varName) return null
+    def gv = safeGetGlobalVar(varName)
+    def raw = gv?.value
+    if (raw == null) return null
+    try {
+        return raw as BigDecimal
+    } catch (ignored) {
+        return null
+    }
+}
+
+private def safeGetGlobalVar(String name) {
+    if (!name) return null
+    try {
+        return getGlobalVar(name)
+    } catch (ignored) {
+        return null
+    }
 }
 
 private BigDecimal settingDecimal(String name, BigDecimal defaultVal) {
