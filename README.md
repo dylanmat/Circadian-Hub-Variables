@@ -11,7 +11,7 @@ Circadian Hub Variables is a Hubitat automation app that writes dynamic dimmer a
    - `minCT`: minimum allowed color temperature (1500-4000 K).
    - `maxCT`: maximum allowed color temperature (4500-8000 K).
 2. **Install or update the app.** Import the latest `circadian_hub_variables_hubitat_app.groovy` into Hubitat (via Hubitat Package Manager or the Apps Code editor) and create an instance of the app.
-3. **Select your Hub Variables.** On the main app page choose the Hub Variable for each selector. The "Targets & Limits" inputs now point at Hub Variables instead of raw numbers—make sure the stored values fall within the expected ranges noted beside each selector.
+3. **Select your Hub Variables.** On the main app page choose the Hub Variable for each selector. The pulldowns list every numeric Hub Variable so `minDim`, `maxDim`, `minCT`, and `maxCT` now offer the same selection experience as the output variables.
 4. **Adjust the schedule and curves.** Configure the active window, morning/evening transitions, and optional plateau or exponent tuning to match your household routine.
 5. **Save and monitor.** Tap *Done* to save. The app will immediately populate the Hub Variables and keep them refreshed at the chosen cadence. Enable debug logging temporarily if you need to trace the computed levels.
 
@@ -19,6 +19,10 @@ Circadian Hub Variables is a Hubitat automation app that writes dynamic dimmer a
 The app now enforces all dimmer and color-temperature limits through Hub Variables. This allows external rules to adjust thresholds without reopening the app: just update the underlying Hub Variable and the next scheduled run will honor the new bounds (provided they stay within the documented ranges). Validation prevents writes when a value is missing, out of range, or when minimums exceed maximums.
 
 ## Changelog
+### 2025-11-01 (v2.0.6)
+- Fixed the Hub Variable pulldowns for `minDim`, `maxDim`, `minCT`, and `maxCT` so they populate consistently alongside the output selectors.
+- Documented the consistent selector behaviour in the basic usage guide and refreshed metadata for v2.0.6.
+
 ### 2025-11-01 (v2.0.5)
 - Switched minimum/maximum dimmer and color-temperature settings to Hub Variable selectors with range validation.
 - Added safeguards that block updates when Hub Variables are missing, out of range, or inverted.
