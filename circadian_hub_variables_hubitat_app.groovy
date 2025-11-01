@@ -101,7 +101,7 @@ private void scheduleUpdaters() {
         runEvery1Minute("updateNow")
     } else {
         Integer s = Math.max(10, (updateSecs ?: 60) as Integer)
-        schedule("*/${s} * * * * ?", updateNow)
+        schedule("*/${s} * * * * ?", "updateNow")
     }
     // Recompute on mode/sunrise/sunset changes
     subscribe(location, "position", locationHandler) // covers TZ/lat/long changes
