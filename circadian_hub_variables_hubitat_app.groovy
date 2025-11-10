@@ -1,7 +1,7 @@
 import groovy.transform.Field
 
 @Field final String APP_NAME    = "Circadian Hub Variables"
-@Field final String APP_VERSION = "2.0.5a"
+@Field final String APP_VERSION = "2.0.6"
 @Field final String APP_BRANCH  = "main"
 @Field final String APP_UPDATED = "2025-11-01"    // ISO date is clean
 
@@ -26,15 +26,20 @@ preferences {
 
 Map mainPage() {
     dynamicPage(name: "mainPage", title: APP_NAME, uninstall: true, install: true) {
+        Map allGV = [:]
+        try {
+            allGV = getAllGlobalVars() ?: [:]
+        } catch (ignored) {}
+        List<String> numericVarNames = allGV.findAll { k, v -> v?.type in ["integer", "bigdecimal"] }
+            ?.collect { it.key }
+            ?.sort() ?: []
+
         section("Outputs: Hub Variable selectors (numeric types)") {
-            def allGV = [:]
-            try { allGV = getAllGlobalVars() ?: [:] } catch (ignored) {}
-            def numNames = allGV.findAll { k,v -> v?.type in ["integer","bigdecimal"] }?.collect { it.key }?.sort() ?: []
-            if (!numNames) {
+            if (!numericVarNames) {
                 paragraph "No numeric Hub Variables found. Create them first in Settings → Hub Variables (type integer or bigdecimal)."
             }
-            input name: "dimmerVarName", type: "enum", options: numNames, title: "Dimmer % Hub Variable (integer/bigdecimal)", required: true, submitOnChange: true
-            input name: "ctVarName",     type: "enum", options: numNames, title: "Color Temp (K) Hub Variable (integer/bigdecimal)", required: true, submitOnChange: true
+            input name: "dimmerVarName", type: "enum", options: numericVarNames, title: "Dimmer % Hub Variable (integer/bigdecimal)", required: true, submitOnChange: true
+            input name: "ctVarName",     type: "enum", options: numericVarNames, title: "Color Temp (K) Hub Variable (integer/bigdecimal)", required: true, submitOnChange: true
         }
         section("Time Window & Curves") {
             input name: "startTimeStr", type: "time", title: "Active window start (HH:MM — earliest adjustments begin)", required: true, defaultValue: "05:30"
@@ -43,10 +48,13 @@ Map mainPage() {
             input name: "eveningTransitionTimeStr", type: "time", title: "Evening wind‑down start (HH:MM — begin warming + dimming)", required: true, defaultValue: "18:30"
         }
         section("Targets & Limits") {
-            input name: "minDim", type: "enum", options: numNames, title: "Evening dimmer minimum (%) Hub Variable — expected value 1-100", required: true, submitOnChange: true
-            input name: "maxDim", type: "enum", options: numNames, title: "Daytime dimmer maximum (%) Hub Variable — expected value 1-100", required: true, submitOnChange: true
-            input name: "minCT",  type: "enum", options: numNames, title: "Evening color temp minimum (K) Hub Variable — expected value 1500-4000", required: true, submitOnChange: true
-            input name: "maxCT",  type: "enum", options: numNames, title: "Daytime color temp maximum (K) Hub Variable — expected value 4500-8000", required: true, submitOnChange: true
+            if (!numericVarNames) {
+                paragraph "Targets & limits require numeric Hub Variables. Add them under Settings → Hub Variables first."
+            }
+            input name: "minDim", type: "enum", options: numericVarNames, title: "Evening dimmer minimum (%) Hub Variable — expected value 1-100", required: true, submitOnChange: true
+            input name: "maxDim", type: "enum", options: numericVarNames, title: "Daytime dimmer maximum (%) Hub Variable — expected value 1-100", required: true, submitOnChange: true
+            input name: "minCT",  type: "enum", options: numericVarNames, title: "Evening color temp minimum (K) Hub Variable — expected value 1500-4000", required: true, submitOnChange: true
+            input name: "maxCT",  type: "enum", options: numericVarNames, title: "Daytime color temp maximum (K) Hub Variable — expected value 4500-8000", required: true, submitOnChange: true
         }
         section("Wellness Tuning") {
             input name: "ctMorningExponent", type: "decimal", title: "CT morning exponent — higher = faster ramp, lower = gentler", range: "0.2..5.0", defaultValue: 1.6, required: true
