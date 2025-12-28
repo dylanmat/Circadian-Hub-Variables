@@ -12,13 +12,17 @@ Circadian Hub Variables is a Hubitat automation app that writes dynamic dimmer a
    - `maxCT`: maximum allowed color temperature (4500-8000 K).
 2. **Install or update the app.** Import the latest `circadian_hub_variables_hubitat_app.groovy` into Hubitat (via Hubitat Package Manager or the Apps Code editor) and create an instance of the app.
 3. **Select your Hub Variables.** On the main app page choose the Hub Variable for each selector. The pulldowns list every numeric Hub Variable so `minDim`, `maxDim`, `minCT`, and `maxCT` now offer the same selection experience as the output variables.
-4. **Adjust the schedule and curves.** Configure the active window, morning/evening transitions, and optional plateau or exponent tuning to match your household routine.
+4. **Adjust the schedule and curves.** Configure the active window, morning/evening transitions, and optional plateau or exponent tuning to match your household routine. Update cadence is automatic based on the next 1% dimmer change.
 5. **Save and monitor.** Tap *Done* to save. The app will immediately populate the Hub Variables and keep them refreshed at the chosen cadence. Enable debug logging temporarily if you need to trace the computed levels.
 
 ## Targets & limits via Hub Variables
 The app now enforces all dimmer and color-temperature limits through Hub Variables. This allows external rules to adjust thresholds without reopening the app: just update the underlying Hub Variable and the next scheduled run will honor the new bounds (provided they stay within the documented ranges). Validation prevents writes when a value is missing, out of range, or when minimums exceed maximums.
 
 ## Changelog
+### 2025-11-02 (v2.1.0)
+- Switched update scheduling to an adaptive cadence based on the next 1% dimmer change, removing the manual interval setting.
+- Ensured the app pauses updates outside the active window until the next window starts.
+
 ### 2025-11-01 (v2.0.6)
 - Fixed the Hub Variable pulldowns for `minDim`, `maxDim`, `minCT`, and `maxCT` so they populate consistently alongside the output selectors.
 - Documented the consistent selector behaviour in the basic usage guide and refreshed metadata for v2.0.6.
