@@ -1,7 +1,7 @@
 import groovy.transform.Field
 
 @Field final String APP_NAME    = "Circadian Hub Variables"
-@Field final String APP_VERSION = "2.1.2"
+@Field final String APP_VERSION = "2.1.3"
 @Field final String APP_BRANCH  = "main"
 @Field final String APP_UPDATED = "2025-12-29"    // ISO date is clean
 
@@ -457,7 +457,8 @@ private Long secondsUntilNextDimmerStep(Date now, Date winStart, Date winEnd, Ma
         if (delta.abs() < 1G) {
             if (boundary.after(now)) {
                 long waitMs = boundary.time - now.time
-                return Math.max(1L, waitMs / 1000L)
+                long waitSeconds = (waitMs / 1000L) as Long
+                return waitSeconds < 1L ? 1L : waitSeconds
             }
             cursor = boundary
             startVal = endVal
@@ -467,7 +468,8 @@ private Long secondsUntilNextDimmerStep(Date now, Date winStart, Date winEnd, Ma
         BigDecimal target = startVal + (increasing ? 1G : -1G)
         Date next = findNextChangeTime(cursor, boundary, target, increasing, winStart, winEnd, anchors, minP, maxP, morningExponent)
         long waitMs = next.time - now.time
-        return Math.max(1L, waitMs / 1000L)
+        long waitSeconds = (waitMs / 1000L) as Long
+        return waitSeconds < 1L ? 1L : waitSeconds
     }
 
     return null
