@@ -1,7 +1,7 @@
 import groovy.transform.Field
 
 @Field final String APP_NAME    = "Circadian Hub Variables"
-@Field final String APP_VERSION = "2.1.0"
+@Field final String APP_VERSION = "2.1.1"
 @Field final String APP_BRANCH  = "main"
 @Field final String APP_UPDATED = "2025-11-02"    // ISO date is clean
 
@@ -448,12 +448,13 @@ private Long secondsUntilNextDimmerStep(Date now, Date winStart, Date winEnd, Ma
     if (now.after(winEnd)) return null
     List<Date> boundaries = [anchors.noonA, anchors.noonB, anchors.dimEveStart, winEnd]
     Date cursor = now
-    BigDecimal startVal = dimmerOutput(cursor, winStart, winEnd, anchors, minP, maxP, morningExponent)
+    BigDecimal startVal = dimmerRaw(cursor, winStart, winEnd, anchors, minP, maxP, morningExponent)
 
     for (Date boundary : boundaries) {
         if (boundary.before(cursor)) continue
-        BigDecimal endVal = dimmerOutput(boundary, winStart, winEnd, anchors, minP, maxP, morningExponent)
-        if ((endVal - startVal).abs() < 1G) {
+        BigDecimal endVal = dimmerRaw(boundary, winStart, winEnd, anchors, minP, maxP, morningExponent)
+        BigDecimal delta = endVal - startVal
+        if (delta.abs() < 1G) {
             if (boundary.after(now)) {
                 long waitMs = boundary.time - now.time
                 return Math.max(1L, waitMs / 1000L)
@@ -462,7 +463,9 @@ private Long secondsUntilNextDimmerStep(Date now, Date winStart, Date winEnd, Ma
             startVal = endVal
             continue
         }
-        Date next = findNextChangeTime(cursor, boundary, startVal, winStart, winEnd, anchors, minP, maxP, morningExponent)
+        boolean increasing = delta > 0G
+        BigDecimal target = startVal + (increasing ? 1G : -1G)
+        Date next = findNextChangeTime(cursor, boundary, target, increasing, winStart, winEnd, anchors, minP, maxP, morningExponent)
         long waitMs = next.time - now.time
         return Math.max(1L, waitMs / 1000L)
     }
@@ -470,14 +473,15 @@ private Long secondsUntilNextDimmerStep(Date now, Date winStart, Date winEnd, Ma
     return null
 }
 
-private Date findNextChangeTime(Date start, Date end, BigDecimal startVal, Date winStart, Date winEnd, Map anchors,
+private Date findNextChangeTime(Date start, Date end, BigDecimal target, boolean increasing, Date winStart, Date winEnd, Map anchors,
                                 BigDecimal minP, BigDecimal maxP, BigDecimal morningExponent) {
     long low = start.time
     long high = end.time
     for (int i = 0; i < 24; i++) {
         long mid = (low + high) / 2L
-        BigDecimal val = dimmerOutput(new Date(mid), winStart, winEnd, anchors, minP, maxP, morningExponent)
-        if ((val - startVal).abs() >= 1G) {
+        BigDecimal val = dimmerRaw(new Date(mid), winStart, winEnd, anchors, minP, maxP, morningExponent)
+        boolean reached = increasing ? (val >= target) : (val <= target)
+        if (reached) {
             high = mid
         } else {
             low = mid + 1L
@@ -486,13 +490,10 @@ private Date findNextChangeTime(Date start, Date end, BigDecimal startVal, Date 
     return new Date(high)
 }
 
-private BigDecimal dimmerOutput(Date now, Date winStart, Date winEnd, Map anchors,
-                                BigDecimal minP, BigDecimal maxP, BigDecimal morningExponent) {
+private BigDecimal dimmerRaw(Date now, Date winStart, Date winEnd, Map anchors,
+                             BigDecimal minP, BigDecimal maxP, BigDecimal morningExponent) {
     BigDecimal dimmer = computeDimmer(now, null, winStart, winEnd, anchors, minP, maxP, morningExponent)
-    if (snapToInt) {
-        return dimmer.setScale(0, BigDecimal.ROUND_HALF_UP)
-    }
-    return dimmer.setScale(1, BigDecimal.ROUND_HALF_UP)
+    return clamp(dimmer, minP, maxP)
 }
 
 /** Dimmer logic */
