@@ -19,10 +19,13 @@ Circadian Hub Variables is a Hubitat automation app that writes dynamic dimmer a
 The app now enforces all dimmer and color-temperature limits through Hub Variables. This allows external rules to adjust thresholds without reopening the app: just update the underlying Hub Variable and the next scheduled run will honor the new bounds (provided they stay within the documented ranges). Validation prevents writes when a value is missing, out of range, or when minimums exceed maximums.
 
 ## Changelog
-### 2025-11-02 (v2.1.1)
+### 2025-12-29 (v2.1.2)
+- Corrected changelog dates to reflect the original request timeline.
+
+### 2025-12-29 (v2.1.1)
 - Fixed adaptive scheduling to trigger throughout the active window by targeting the next 1% dimmer change using raw dimmer values.
 
-### 2025-11-02 (v2.1.0)
+### 2025-12-28 (v2.1.0)
 - Switched update scheduling to an adaptive cadence based on the next 1% dimmer change, removing the manual interval setting.
 - Ensured the app pauses updates outside the active window until the next window starts.
 
