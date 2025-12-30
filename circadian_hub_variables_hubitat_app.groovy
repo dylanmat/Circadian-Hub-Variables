@@ -1,9 +1,9 @@
 import groovy.transform.Field
 
 @Field final String APP_NAME    = "Circadian Hub Variables"
-@Field final String APP_VERSION = "2.0.6"
+@Field final String APP_VERSION = "2.1.3"
 @Field final String APP_BRANCH  = "main"
-@Field final String APP_UPDATED = "2025-11-01"    // ISO date is clean
+@Field final String APP_UPDATED = "2025-12-29"    // ISO date is clean
 
 definition(
     name: APP_NAME,
@@ -64,8 +64,7 @@ Map mainPage() {
             input name: "middayPlateauMins", type: "number", title: "Midday plateau length (mins) — 0 disables the flat top", defaultValue: 60, required: true
         }
         section("Update & Behavior") {
-            input name: "updateEveryMin", type: "bool",   title: "Update every minute (recommended for smoothest curve)", defaultValue: true
-            input name: "updateSecs",     type: "number", title: "If not every minute, update every N seconds (10‑3600, larger = slower)", range: "10..3600", defaultValue: 60, required: false
+            paragraph "Updates are scheduled dynamically based on the next 1% dimmer change to balance hub load with smooth transitions."
             input name: "onlyWithinWindow", type: "bool", title: "Only write variables within active window (values stay put outside)", defaultValue: true
             input name: "snapToInt",      type: "bool",   title: "Write integers (no decimals) — best for Hub Variables", defaultValue: true
             input name: "logDebug",       type: "bool",   title: "Enable debug logging (auto‑disables in 30m)", defaultValue: false
@@ -113,12 +112,6 @@ def logsOff() { log.warn "Debug logging disabled"; app.updateSetting("logDebug",
 /********************** Scheduling ************************/ 
 
 private void scheduleUpdaters() {
-    if (updateEveryMin) {
-        runEvery1Minute("updateNow")
-    } else {
-        Integer s = Math.max(10, (updateSecs ?: 60) as Integer)
-        schedule("*/${s} * * * * ?", updateNow)
-    }
     // Recompute on mode/sunrise/sunset changes
     subscribe(location, "position", locationHandler) // covers TZ/lat/long changes
     subscribe(location, "sunriseTime",  locationHandler)
@@ -133,7 +126,10 @@ def locationHandler(evt) {
 /********************** Core Logic ************************/ 
 
 def updateNow() {
-    if (!validateVars()) return
+    if (!validateVars()) {
+        scheduleRetry(300)
+        return
+    }
 
     Map sun = getTodaySunTimes()
     Date now = new Date()
@@ -144,6 +140,7 @@ def updateNow() {
     boolean inWindow = isBetween(now, winStart, winEnd)
     if (onlyWithinWindow && !inWindow) {
         if (logDebug) log.debug "Outside active window; skipping write."
+        scheduleNextWindowStart(now, winStart)
         return
     }
 
@@ -193,6 +190,8 @@ def updateNow() {
     writeHubVar(ctVarName,     ctemp)
 
     if (logDebug) log.debug "Wrote variables → ${dimmerVarName}: ${dimmer} | ${ctVarName}: ${ctemp}K  | sun=${sunriseSunsetSummary(sun)}"
+
+    scheduleNextUpdate(now, winStart, winEnd, anchors, minDimBD, maxDimBD, dimMorningExp)
 }
 
 private boolean validateVars() {
@@ -406,6 +405,97 @@ private Long minutesToMillis(def minutesVal, BigDecimal defaultVal) {
     if (mins < 0G) mins = 0G
     BigDecimal millis = mins * 60000G
     return millis.setScale(0, BigDecimal.ROUND_HALF_UP).longValue()
+}
+
+private void scheduleRetry(int seconds) {
+    if (seconds < 1) return
+    unschedule("updateNow")
+    runIn(seconds, "updateNow")
+}
+
+private void scheduleNextWindowStart(Date now, Date winStart) {
+    Date nextStart = winStart
+    if (!now.before(winStart)) {
+        nextStart = new Date(winStart.time + 86400000L)
+    }
+    long delayMs = Math.max(1000L, nextStart.time - now.time)
+    int delaySeconds = Math.max(1, (delayMs / 1000L) as Integer)
+    if (logDebug) log.debug "Scheduling next update at window start in ${delaySeconds}s"
+    unschedule("updateNow")
+    runIn(delaySeconds, "updateNow")
+}
+
+private void scheduleNextUpdate(Date now, Date winStart, Date winEnd, Map anchors,
+                                BigDecimal minP, BigDecimal maxP, BigDecimal morningExponent) {
+    if (onlyWithinWindow && !isBetween(now, winStart, winEnd)) {
+        scheduleNextWindowStart(now, winStart)
+        return
+    }
+
+    Long delaySeconds = secondsUntilNextDimmerStep(now, winStart, winEnd, anchors, minP, maxP, morningExponent)
+    if (delaySeconds == null) {
+        scheduleNextWindowStart(now, winStart)
+        return
+    }
+    long safeSeconds = Math.max(1L, Math.min(delaySeconds, 86400L))
+    if (logDebug) log.debug "Scheduling next update in ${safeSeconds}s"
+    unschedule("updateNow")
+    runIn(safeSeconds as Integer, "updateNow")
+}
+
+private Long secondsUntilNextDimmerStep(Date now, Date winStart, Date winEnd, Map anchors,
+                                        BigDecimal minP, BigDecimal maxP, BigDecimal morningExponent) {
+    if (now.after(winEnd)) return null
+    List<Date> boundaries = [anchors.noonA, anchors.noonB, anchors.dimEveStart, winEnd]
+    Date cursor = now
+    BigDecimal startVal = dimmerRaw(cursor, winStart, winEnd, anchors, minP, maxP, morningExponent)
+
+    for (Date boundary : boundaries) {
+        if (boundary.before(cursor)) continue
+        BigDecimal endVal = dimmerRaw(boundary, winStart, winEnd, anchors, minP, maxP, morningExponent)
+        BigDecimal delta = endVal - startVal
+        if (delta.abs() < 1G) {
+            if (boundary.after(now)) {
+                long waitMs = boundary.time - now.time
+                long waitSeconds = (waitMs / 1000L) as Long
+                return waitSeconds < 1L ? 1L : waitSeconds
+            }
+            cursor = boundary
+            startVal = endVal
+            continue
+        }
+        boolean increasing = delta > 0G
+        BigDecimal target = startVal + (increasing ? 1G : -1G)
+        Date next = findNextChangeTime(cursor, boundary, target, increasing, winStart, winEnd, anchors, minP, maxP, morningExponent)
+        long waitMs = next.time - now.time
+        long waitSeconds = (waitMs / 1000L) as Long
+        return waitSeconds < 1L ? 1L : waitSeconds
+    }
+
+    return null
+}
+
+private Date findNextChangeTime(Date start, Date end, BigDecimal target, boolean increasing, Date winStart, Date winEnd, Map anchors,
+                                BigDecimal minP, BigDecimal maxP, BigDecimal morningExponent) {
+    long low = start.time
+    long high = end.time
+    for (int i = 0; i < 24; i++) {
+        long mid = (low + high) / 2L
+        BigDecimal val = dimmerRaw(new Date(mid), winStart, winEnd, anchors, minP, maxP, morningExponent)
+        boolean reached = increasing ? (val >= target) : (val <= target)
+        if (reached) {
+            high = mid
+        } else {
+            low = mid + 1L
+        }
+    }
+    return new Date(high)
+}
+
+private BigDecimal dimmerRaw(Date now, Date winStart, Date winEnd, Map anchors,
+                             BigDecimal minP, BigDecimal maxP, BigDecimal morningExponent) {
+    BigDecimal dimmer = computeDimmer(now, null, winStart, winEnd, anchors, minP, maxP, morningExponent)
+    return clamp(dimmer, minP, maxP)
 }
 
 /** Dimmer logic */
