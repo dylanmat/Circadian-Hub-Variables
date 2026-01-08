@@ -1,9 +1,9 @@
 import groovy.transform.Field
 
 @Field final String APP_NAME    = "Circadian Hub Variables"
-@Field final String APP_VERSION = "2.1.3"
+@Field final String APP_VERSION = "2.1.4"
 @Field final String APP_BRANCH  = "main"
-@Field final String APP_UPDATED = "2025-12-29"    // ISO date is clean
+@Field final String APP_UPDATED = "2026-01-08"    // ISO date is clean
 
 definition(
     name: APP_NAME,
@@ -64,7 +64,7 @@ Map mainPage() {
             input name: "middayPlateauMins", type: "number", title: "Midday plateau length (mins) — 0 disables the flat top", defaultValue: 60, required: true
         }
         section("Update & Behavior") {
-            paragraph "Updates are scheduled dynamically based on the next 1% dimmer change to balance hub load with smooth transitions."
+            paragraph "Updates are scheduled dynamically based on the next dimmer or color temperature step to balance hub load with smooth transitions."
             input name: "onlyWithinWindow", type: "bool", title: "Only write variables within active window (values stay put outside)", defaultValue: true
             input name: "snapToInt",      type: "bool",   title: "Write integers (no decimals) — best for Hub Variables", defaultValue: true
             input name: "logDebug",       type: "bool",   title: "Enable debug logging (auto‑disables in 30m)", defaultValue: false
@@ -191,7 +191,7 @@ def updateNow() {
 
     if (logDebug) log.debug "Wrote variables → ${dimmerVarName}: ${dimmer} | ${ctVarName}: ${ctemp}K  | sun=${sunriseSunsetSummary(sun)}"
 
-    scheduleNextUpdate(now, winStart, winEnd, anchors, minDimBD, maxDimBD, dimMorningExp)
+    scheduleNextUpdate(now, winStart, winEnd, anchors, minDimBD, maxDimBD, dimMorningExp, minCTBD, maxCTBD, ctMorningExp)
 }
 
 private boolean validateVars() {
@@ -426,13 +426,16 @@ private void scheduleNextWindowStart(Date now, Date winStart) {
 }
 
 private void scheduleNextUpdate(Date now, Date winStart, Date winEnd, Map anchors,
-                                BigDecimal minP, BigDecimal maxP, BigDecimal morningExponent) {
+                                BigDecimal minP, BigDecimal maxP, BigDecimal morningExponent,
+                                BigDecimal minCT, BigDecimal maxCT, BigDecimal ctMorningExponent) {
     if (onlyWithinWindow && !isBetween(now, winStart, winEnd)) {
         scheduleNextWindowStart(now, winStart)
         return
     }
 
-    Long delaySeconds = secondsUntilNextDimmerStep(now, winStart, winEnd, anchors, minP, maxP, morningExponent)
+    Long dimmerDelay = secondsUntilNextDimmerStep(now, winStart, winEnd, anchors, minP, maxP, morningExponent)
+    Long ctDelay = secondsUntilNextCtStep(now, winStart, winEnd, anchors, minCT, maxCT, ctMorningExponent)
+    Long delaySeconds = minNonNull(dimmerDelay, ctDelay)
     if (delaySeconds == null) {
         scheduleNextWindowStart(now, winStart)
         return
@@ -441,6 +444,12 @@ private void scheduleNextUpdate(Date now, Date winStart, Date winEnd, Map anchor
     if (logDebug) log.debug "Scheduling next update in ${safeSeconds}s"
     unschedule("updateNow")
     runIn(safeSeconds as Integer, "updateNow")
+}
+
+private Long minNonNull(Long a, Long b) {
+    if (a == null) return b
+    if (b == null) return a
+    return Math.min(a, b)
 }
 
 private Long secondsUntilNextDimmerStep(Date now, Date winStart, Date winEnd, Map anchors,
@@ -475,6 +484,40 @@ private Long secondsUntilNextDimmerStep(Date now, Date winStart, Date winEnd, Ma
     return null
 }
 
+private Long secondsUntilNextCtStep(Date now, Date winStart, Date winEnd, Map anchors,
+                                    BigDecimal minCT, BigDecimal maxCT, BigDecimal morningExponent) {
+    if (now.after(winEnd)) return null
+    List<Date> boundaries = [anchors.noonA, anchors.noonB, anchors.ctEveStart, winEnd]
+    Date cursor = now
+    BigDecimal startVal = ctRaw(cursor, winStart, winEnd, anchors, minCT, maxCT, morningExponent)
+    BigDecimal step = ((maxCT - minCT).abs() / 100G).setScale(0, BigDecimal.ROUND_HALF_UP)
+    if (step < 1G) step = 1G
+
+    for (Date boundary : boundaries) {
+        if (boundary.before(cursor)) continue
+        BigDecimal endVal = ctRaw(boundary, winStart, winEnd, anchors, minCT, maxCT, morningExponent)
+        BigDecimal delta = endVal - startVal
+        if (delta.abs() < step) {
+            if (boundary.after(now)) {
+                long waitMs = boundary.time - now.time
+                long waitSeconds = (waitMs / 1000L) as Long
+                return waitSeconds < 1L ? 1L : waitSeconds
+            }
+            cursor = boundary
+            startVal = endVal
+            continue
+        }
+        boolean increasing = delta > 0G
+        BigDecimal target = startVal + (increasing ? step : -step)
+        Date next = findNextCtChangeTime(cursor, boundary, target, increasing, winStart, winEnd, anchors, minCT, maxCT, morningExponent)
+        long waitMs = next.time - now.time
+        long waitSeconds = (waitMs / 1000L) as Long
+        return waitSeconds < 1L ? 1L : waitSeconds
+    }
+
+    return null
+}
+
 private Date findNextChangeTime(Date start, Date end, BigDecimal target, boolean increasing, Date winStart, Date winEnd, Map anchors,
                                 BigDecimal minP, BigDecimal maxP, BigDecimal morningExponent) {
     long low = start.time
@@ -492,10 +535,33 @@ private Date findNextChangeTime(Date start, Date end, BigDecimal target, boolean
     return new Date(high)
 }
 
+private Date findNextCtChangeTime(Date start, Date end, BigDecimal target, boolean increasing, Date winStart, Date winEnd, Map anchors,
+                                  BigDecimal minCT, BigDecimal maxCT, BigDecimal morningExponent) {
+    long low = start.time
+    long high = end.time
+    for (int i = 0; i < 24; i++) {
+        long mid = (low + high) / 2L
+        BigDecimal val = ctRaw(new Date(mid), winStart, winEnd, anchors, minCT, maxCT, morningExponent)
+        boolean reached = increasing ? (val >= target) : (val <= target)
+        if (reached) {
+            high = mid
+        } else {
+            low = mid + 1L
+        }
+    }
+    return new Date(high)
+}
+
 private BigDecimal dimmerRaw(Date now, Date winStart, Date winEnd, Map anchors,
                              BigDecimal minP, BigDecimal maxP, BigDecimal morningExponent) {
     BigDecimal dimmer = computeDimmer(now, null, winStart, winEnd, anchors, minP, maxP, morningExponent)
     return clamp(dimmer, minP, maxP)
+}
+
+private BigDecimal ctRaw(Date now, Date winStart, Date winEnd, Map anchors,
+                         BigDecimal minCT, BigDecimal maxCT, BigDecimal morningExponent) {
+    BigDecimal ctemp = computeCT(now, null, winStart, winEnd, anchors, minCT, maxCT, morningExponent)
+    return clamp(ctemp, minCT, maxCT)
 }
 
 /** Dimmer logic */
