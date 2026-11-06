@@ -2,7 +2,9 @@
 
 ## [Unreleased]
 
-No pending changes.
+### Added
+
+- Source-review findings, DST reproduction evidence, impact assessment, and a prioritized seasonal-lighting simplification proposal in ROADMAP.md. App behavior is unchanged.
 
 ## [v2.1.5] - 2026-11-05
 
