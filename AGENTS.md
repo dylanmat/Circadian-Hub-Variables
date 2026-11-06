@@ -74,7 +74,7 @@ Include summary, rationale, verification evidence, document impact, and handoff 
 - Debug logging should remain optional and auto-disable.
 
 ## Testing / validation
-- There are no automated tests. Validate changes by:
+- Run the offline Groovy regressions as described in [tests/README.md](tests/README.md). Also validate changes by:
   - Reviewing UI labels and ranges for inputs.
   - Ensuring `updateNow()` and scheduling logic still run without missing variables.
 

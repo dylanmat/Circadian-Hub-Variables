@@ -1,7 +1,7 @@
 import groovy.transform.Field
 
 @Field final String APP_NAME    = "Circadian Hub Variables"
-@Field final String APP_VERSION = "2.1.5"
+@Field final String APP_VERSION = "2.1.6"
 @Field final String APP_BRANCH  = "main"
 @Field final String APP_UPDATED = "2026-11-05"    // ISO date is clean
 
@@ -42,10 +42,13 @@ Map mainPage() {
             input name: "ctVarName",     type: "enum", options: numericVarNames, title: "Color Temp (K) Hub Variable (integer/bigdecimal)", required: true, submitOnChange: true
         }
         section("Time Window & Curves") {
+            input name: "solarAnchors", type: "bool", title: "Use sunrise/sunset anchors (opt in; existing curves stay unchanged until enabled)", defaultValue: false
+            paragraph "Use a same-day window of at least 4 minutes. Overnight windows are not supported. Solar mode reaches daytime levels by sunrise or the peak deadline, whichever is earlier, and starts evening transition by sunset or the evening deadline, whichever is earlier."
+
             input name: "startTimeStr", type: "time", title: "Active window start (HH:MM — earliest adjustments begin)", required: true, defaultValue: "05:30"
             input name: "endTimeStr",   type: "time", title: "Active window end (HH:MM — final targets reached)", required: true, defaultValue: "22:30"
-            input name: "workdayPeakTimeStr", type: "time", title: "Workday daylight target time (HH:MM — reach daytime levels by this time)", required: true, defaultValue: "08:00"
-            input name: "eveningTransitionTimeStr", type: "time", title: "Evening wind‑down start (HH:MM — begin warming + dimming)", required: true, defaultValue: "18:30"
+            input name: "workdayPeakTimeStr", type: "time", title: "Daytime peak deadline (solar mode only; legacy peaks near solar noon)", required: true, defaultValue: "08:00"
+            input name: "eveningTransitionTimeStr", type: "time", title: "Evening transition deadline (solar mode) / fixed anchor (legacy)", required: true, defaultValue: "18:30"
         }
         section("Targets & Limits") {
             if (!numericVarNames) {
@@ -59,9 +62,9 @@ Map mainPage() {
         section("Wellness Tuning") {
             input name: "ctMorningExponent", type: "decimal", title: "CT morning exponent — higher = faster ramp, lower = gentler", range: "0.2..5.0", defaultValue: 1.6, required: true
             input name: "dimMorningExponent", type: "decimal", title: "Dimmer morning exponent — higher = faster ramp", range: "0.2..5.0", defaultValue: 0.7, required: true
-            input name: "ctEveningHeadStartMins", type: "number", title: "CT evening head start (mins) — larger = earlier warm shift", defaultValue: 60, required: true
-            input name: "dimEveningLagMins", type: "number", title: "Dimmer evening lag (mins) — larger = later dimming", defaultValue: 30, required: true
-            input name: "middayPlateauMins", type: "number", title: "Midday plateau length (mins) — 0 disables the flat top", defaultValue: 60, required: true
+            input name: "ctEveningHeadStartMins", type: "number", range: "0..240", title: "CT evening head start (mins) — larger = earlier warm shift", defaultValue: 60, required: true
+            input name: "dimEveningLagMins", type: "number", range: "0..240", title: "Dimmer evening lag (mins) — larger = later dimming", defaultValue: 30, required: true
+            input name: "middayPlateauMins", type: "number", range: "0..360", title: "Midday plateau length (mins) — 0 disables the flat top", defaultValue: 60, required: true
         }
         section("Update & Behavior") {
             paragraph "Updates are scheduled dynamically based on the next dimmer or color temperature step to balance hub load with smooth transitions."
@@ -126,16 +129,28 @@ def locationHandler(evt) {
 /********************** Core Logic ************************/ 
 
 def updateNow() {
-    if (!validateVars()) {
+    try {
+        updateTargets()
+    } catch (Exception e) {
+        log.warn "Circadian update paused; holding outputs and retrying in 5 minutes (${e.class.simpleName}). Check time settings and hub sun data."
+        scheduleRetry(300)
+    }
+}
+
+private void updateTargets() {
+    Map snapshot = readValidatedSnapshot()
+    if (snapshot == null) {
         scheduleRetry(300)
         return
     }
 
-    Map sun = getTodaySunTimes()
     Date now = new Date()
-
-    Date winStart = timeToday(startTimeStr)
-    Date winEnd   = timeToday(endTimeStr)
+    Date winStart = localTimeOnDay(settings.startTimeStr, now)
+    Date winEnd = localTimeOnDay(settings.endTimeStr, now)
+    if (winEnd.time - winStart.time < 240000L) {
+        throw new IllegalArgumentException("Use a same-day window of at least 4 minutes")
+    }
+    validateTuning()
 
     boolean inWindow = isBetween(now, winStart, winEnd)
     if (onlyWithinWindow && !inWindow) {
@@ -144,32 +159,14 @@ def updateNow() {
         return
     }
 
-    BigDecimal minDimBD = hubVarDecimal("minDim", 20G)
-    BigDecimal maxDimBD = hubVarDecimal("maxDim", 100G)
-    BigDecimal minCTBD  = hubVarDecimal("minCT", 2000G)
-    BigDecimal maxCTBD  = hubVarDecimal("maxCT", 6500G)
-
+    Map sun = getTodaySunTimes(now, winStart, winEnd)
+    Map anchors = buildAnchors(sun, winStart, winEnd)
+    BigDecimal minDimBD = snapshot.minDim
+    BigDecimal maxDimBD = snapshot.maxDim
+    BigDecimal minCTBD = snapshot.minCT
+    BigDecimal maxCTBD = snapshot.maxCT
     BigDecimal dimMorningExp = settingDecimal("dimMorningExponent", 0.7G)
-    BigDecimal ctMorningExp  = settingDecimal("ctMorningExponent", 1.6G)
-
-    Long plateauMillis = minutesToMillis(settings.middayPlateauMins, 60G)
-    Long plateauHalf   = (plateauMillis != null && plateauMillis > 0L) ? (plateauMillis.longValue() / 2L) : 0L
-    Long ctHeadStartMs = minutesToMillis(settings.ctEveningHeadStartMins, 60G)
-    Long dimLagMs      = minutesToMillis(settings.dimEveningLagMins, 30G)
-
-    long noonTime = sun.noon.time
-    Date noonA       = new Date(noonTime - plateauHalf.longValue())
-    Date noonB       = new Date(noonTime + plateauHalf.longValue())
-    long eveningStartTime = sun.eveningStart.time
-    Date ctEveStart  = new Date(eveningStartTime - ctHeadStartMs.longValue())
-    Date dimEveStart = new Date(eveningStartTime + dimLagMs.longValue())
-
-    if (ctEveStart.before(noonB)) ctEveStart = noonB
-    if (ctEveStart.after(winEnd)) ctEveStart = winEnd
-    if (dimEveStart.before(ctEveStart)) dimEveStart = ctEveStart
-    if (dimEveStart.after(winEnd)) dimEveStart = winEnd
-
-    Map anchors = [noonA: noonA, noonB: noonB, ctEveStart: ctEveStart, dimEveStart: dimEveStart]
+    BigDecimal ctMorningExp = settingDecimal("ctMorningExponent", 1.6G)
 
     // Build eased targets
     BigDecimal dimmer = computeDimmer(now, sun, winStart, winEnd, anchors, minDimBD, maxDimBD, dimMorningExp)
@@ -194,35 +191,50 @@ def updateNow() {
     scheduleNextUpdate(now, winStart, winEnd, anchors, minDimBD, maxDimBD, dimMorningExp, minCTBD, maxCTBD, ctMorningExp)
 }
 
-private boolean validateVars() {
-    boolean ok = true
-
-    if (!validateNumericVar(dimmerVarName, "Dimmer % output")) ok = false
-    if (!validateNumericVar(ctVarName, "Color Temp (K) output")) ok = false
-    if (!validateSettingVarWithinRange("minDim", "Evening dimmer minimum (%)", 1G, 100G)) ok = false
-    if (!validateSettingVarWithinRange("maxDim", "Daytime dimmer maximum (%)", 1G, 100G)) ok = false
-    if (!validateSettingVarWithinRange("minCT",  "Evening color temp minimum (K)", 1500G, 4000G)) ok = false
-    if (!validateSettingVarWithinRange("maxCT",  "Daytime color temp maximum (K)", 4500G, 8000G)) ok = false
-
-    if (!ok) {
-        return false
+private Map readValidatedSnapshot() {
+    List<String> outputs = [settings.dimmerVarName, settings.ctVarName]
+    List<String> limits = ["minDim", "maxDim", "minCT", "maxCT"]
+    if (!outputs.every { it } || outputs[0] == outputs[1] ||
+        limits.any { outputs.contains(settings[it]) }) {
+        log.warn "Select distinct output variables that are not also used for limits."
+        return null
     }
-
-    BigDecimal minDimVal = readGlobalVarDecimal(settings.minDim)
-    BigDecimal maxDimVal = readGlobalVarDecimal(settings.maxDim)
-    if (minDimVal != null && maxDimVal != null && minDimVal > maxDimVal) {
-        log.warn "Evening dimmer minimum (%) should be less than or equal to daytime maximum."
-        ok = false
+    Map cache = [:]
+    Map result = [:]
+    Map ranges = [minDim: [1G, 100G], maxDim: [1G, 100G], minCT: [1500G, 4000G], maxCT: [4500G, 8000G]]
+    for (String key : ["dimmerVarName", "ctVarName"] + limits) {
+        String name = settings[key]
+        if (!name) { log.warn "Select a numeric Hub Variable for ${key}."; return null }
+        if (!cache.containsKey(name)) {
+            def gv = safeGetGlobalVar(name)
+            if (!gv || !(gv.type in ["integer", "bigdecimal"])) {
+                log.warn "Select an existing integer/bigdecimal Hub Variable for ${key}."
+                return null
+            }
+            try { cache[name] = gv.value as BigDecimal } catch (ignored) { return null }
+            if (cache[name] == null) return null
+        }
+        BigDecimal value = cache[name]
+        if (ranges[key] && (value < ranges[key][0] || value > ranges[key][1])) {
+            log.warn "Hub Variable for ${key} is outside its supported range."
+            return null
+        }
+        result[key] = value
     }
-
-    BigDecimal minCTVal = readGlobalVarDecimal(settings.minCT)
-    BigDecimal maxCTVal = readGlobalVarDecimal(settings.maxCT)
-    if (minCTVal != null && maxCTVal != null && minCTVal > maxCTVal) {
-        log.warn "Evening color temp minimum (K) should be less than or equal to daytime maximum."
-        ok = false
+    if (result.minDim > result.maxDim || result.minCT > result.maxCT) {
+        log.warn "Minimum limits must not exceed maximum limits."
+        return null
     }
+    return result
+}
 
-    return ok
+private void validateTuning() {
+    [ctMorningExponent: [0.2G, 5G, 1.6G], dimMorningExponent: [0.2G, 5G, 0.7G],
+     ctEveningHeadStartMins: [0G, 240G, 60G], dimEveningLagMins: [0G, 240G, 30G],
+     middayPlateauMins: [0G, 360G, 60G]].each { key, bounds ->
+        BigDecimal value = settings[key] == null ? bounds[2] : new BigDecimal(settings[key].toString())
+        if (value < bounds[0] || value > bounds[1]) throw new IllegalArgumentException("Invalid tuning: ${key}")
+    }
 }
 
 private void writeHubVar(String name, BigDecimal val) {
@@ -243,26 +255,70 @@ private void writeHubVar(String name, BigDecimal val) {
 
 /********************** Computations ************************/ 
 
-private Map getTodaySunTimes() {
+private Map getTodaySunTimes(Date now, Date winStart, Date winEnd) {
     Map s = getSunriseAndSunset()
-    Date sunrise = s.sunrise instanceof Date ? s.sunrise : new Date(s.sunrise.time)
-    Date sunset  = s.sunset  instanceof Date ? s.sunset  : new Date(s.sunset.time)
-
-    Date winStart = timeToday(startTimeStr ?: "05:30")
-    Date winEnd   = timeToday(endTimeStr   ?: "22:30")
-
-    Date workdayPeak = timeToday(settings.workdayPeakTimeStr ?: "08:00")
-    Date eveningStart = timeToday(settings.eveningTransitionTimeStr ?: "18:30")
-
+    if (!(s?.sunrise instanceof Date) || !(s?.sunset instanceof Date) ||
+        !s.sunset.after(s.sunrise) ||
+        s.sunrise.format("yyyy-MM-dd", location.timeZone) != now.format("yyyy-MM-dd", location.timeZone) ||
+        s.sunset.format("yyyy-MM-dd", location.timeZone) != now.format("yyyy-MM-dd", location.timeZone)) {
+        throw new IllegalStateException("Current-day sunrise/sunset unavailable")
+    }
+    Date workdayPeak = localTimeOnDay(settings.workdayPeakTimeStr ?: "08:00", now)
+    Date eveningStart = localTimeOnDay(settings.eveningTransitionTimeStr ?: "18:30", now)
     if (workdayPeak.before(winStart)) workdayPeak = winStart
-    if (workdayPeak.after(winEnd))   workdayPeak = winEnd
+    if (workdayPeak.after(winEnd)) workdayPeak = winEnd
     if (eveningStart.before(workdayPeak)) eveningStart = workdayPeak
-    if (eveningStart.after(winEnd))       eveningStart = winEnd
+    if (eveningStart.after(winEnd)) eveningStart = winEnd
+    Date noon = new Date(s.sunrise.time + ((s.sunset.time - s.sunrise.time) / 2L as Long))
+    [sunrise: s.sunrise, sunset: s.sunset, morningEnd: workdayPeak, eveningStart: eveningStart, noon: noon]
+}
 
-    Long noonMillis = (sunrise.time + sunset.time) / 2L
-    Date solarNoon = new Date(noonMillis)
+private Map buildAnchors(Map sun, Date winStart, Date winEnd) {
+    long halfPlateau = minutesToMillis(settings.middayPlateauMins, 60G) / 2L as Long
+    long peak = sun.noon.time - halfPlateau
+    long evening = sun.eveningStart.time
+    if (settings.solarAnchors == true) {
+        peak = Math.min(sun.sunrise.time, sun.morningEnd.time)
+        evening = Math.min(sun.sunset.time, evening)
+    }
+    // Reserve nonzero morning/evening segments even in narrow windows.
+    long a = Math.max(winStart.time + 60000L, Math.min(peak, winEnd.time - 180000L))
+    long b = Math.max(a, Math.min(sun.noon.time + halfPlateau, winEnd.time - 120000L))
+    long ct = Math.max(b + 60000L, Math.min(evening - minutesToMillis(settings.ctEveningHeadStartMins, 60G), winEnd.time - 60000L))
+    // Keep the plateau from delaying an early seasonal evening anchor.
+    if (settings.solarAnchors == true) {
+        b = Math.max(a, Math.min(b, Math.min(evening - minutesToMillis(settings.ctEveningHeadStartMins, 60G) - 60000L, winEnd.time - 120000L)))
+        ct = Math.max(b + 60000L, Math.min(evening - minutesToMillis(settings.ctEveningHeadStartMins, 60G), winEnd.time - 60000L))
+    }
+    long dim = Math.max(ct, Math.min(evening + minutesToMillis(settings.dimEveningLagMins, 30G), winEnd.time - 60000L))
+    [noonA: new Date(a), noonB: new Date(b), ctEveStart: new Date(ct), dimEveStart: new Date(dim)]
+}
 
-    [sunrise: sunrise, morningEnd: workdayPeak, eveningStart: eveningStart, sunset: sunset, noon: solarNoon]
+// Hubitat time inputs can contain an old date/UTC offset; retain their local HH:mm.
+// Calendar resolves a spring gap forward and an autumn fold to standard time.
+private Date localTimeOnDay(String value, Date day) {
+    def match = (value ?: "") =~ /^(?:\d{4}-\d{2}-\d{2}T)?(\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?$/
+    if (!match.matches()) throw new IllegalArgumentException("Invalid local time")
+    int hour = match[0][1] as Integer
+    int minute = match[0][2] as Integer
+    if (hour > 23 || minute > 59) throw new IllegalArgumentException("Invalid local time")
+    Calendar base = Calendar.getInstance(location.timeZone)
+    base.time = day
+    Calendar target = Calendar.getInstance(location.timeZone)
+    target.clear()
+    target.set(base.get(Calendar.YEAR), base.get(Calendar.MONTH), base.get(Calendar.DAY_OF_MONTH), hour, minute, 0)
+    return target.time
+}
+
+private Date nextWindowStart(Date now) {
+    Date candidate = localTimeOnDay(settings.startTimeStr, now)
+    if (!candidate.after(now)) {
+        Calendar tomorrow = Calendar.getInstance(location.timeZone)
+        tomorrow.time = now
+        tomorrow.add(Calendar.DAY_OF_MONTH, 1)
+        candidate = localTimeOnDay(settings.startTimeStr, tomorrow.time)
+    }
+    return candidate
 }
 
 private String sunriseSunsetSummary(Map s) {
@@ -414,12 +470,9 @@ private void scheduleRetry(int seconds) {
 }
 
 private void scheduleNextWindowStart(Date now, Date winStart) {
-    Date nextStart = winStart
-    if (!now.before(winStart)) {
-        nextStart = new Date(winStart.time + 86400000L)
-    }
+    Date nextStart = nextWindowStart(now)
     long delayMs = Math.max(1000L, nextStart.time - now.time)
-    int delaySeconds = Math.max(1, (delayMs / 1000L) as Integer)
+    int delaySeconds = Math.max(1, ((delayMs + 999L) / 1000L) as Integer)
     if (logDebug) log.debug "Scheduling next update at window start in ${delaySeconds}s"
     unschedule("updateNow")
     runIn(delaySeconds, "updateNow")

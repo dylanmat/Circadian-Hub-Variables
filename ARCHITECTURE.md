@@ -21,3 +21,11 @@ Variable access failures are caught where implemented; invalid selections/types/
 ## Exclusions and verification
 
 No model/provider integration, prompts, retrieval, memory index, separate database, or credential store is implemented. These AI template components are not applicable. App settings and Hub Variables persist on the hub. Validate selectors, bounds, transitions, retry behavior, partial writes, and lifecycle scheduling using STANDARDS.md. Live verification remains pending. Permissions and unresolved retention decisions are in SECURITY.md.
+
+## Prepared v2.1.6 timing changes (not deployed)
+
+updateNow catches calculation/time/solar failures and schedules a five-minute retry while holding outputs. readValidatedSnapshot reads each distinct selected variable once, rejects output aliasing and output/limit overlap, and checks type/value/ranges before calculation. This is a consistent per-run snapshot of sequential reads, not a hub transaction; external changes can still occur between reads.
+
+localTimeOnDay extracts the configured wall-clock hour/minute and builds that date with Calendar in the hub timezone. nextWindowStart advances the calendar date rather than adding elapsed 24-hour periods. Calendar's gap-forward/fold-standard-time policy is explicit. Existing location subscriptions trigger recalculation; platform event delivery and clock-change behavior require hub verification.
+
+buildAnchors constrains ordered segments within a same-day window of at least four minutes. Legacy mode retains ordinary existing curves. Opt-in solarAnchors uses sunrise/peak-deadline and sunset/evening-deadline minima, with a constrained plateau and existing head-start/lag offsets. Invalid solar data (including absent, reversed, or wrong-day events) causes hold-and-retry. No astronomical fallback is guessed. A failed output write can still produce partial outputs; that remains R7 backlog.

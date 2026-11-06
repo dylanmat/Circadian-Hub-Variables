@@ -77,3 +77,19 @@ Acceptance: preview old/new targets for winter and summer solstices, equinoxes, 
 - Implementer/Docs -> Reviewer: added this assessment to ROADMAP and an unreleased changelog note. Reviewed the entire 628-line app, source call paths, published Hubitat time API, and primary light-guidance sources. Offline DST arithmetic reproduced with Windows timezone rules; Python zoneinfo was unavailable, so the successful check used .NET instead.
 - Reviewer -> Release readiness: documentation link/diff checks recorded in the task conversation. App source unchanged. Runtime regression tests and clinical efficacy tests were not performed; neither is implied by this documentation review. Existing app defects are implementation backlog, not resolved findings.
 - Next owner/action: maintainer selects the seasonal-versus-household schedule tradeoff and approves a first implementation scope. No publication or deployment is part of this task.
+
+## Now implementation status - 2026-11-05
+
+User approval: commit the review, then work on all Now items. Review committed as 88b81c8; the following implementation is local and unreleased, source metadata v2.1.6. No push or deployment is included in this instruction.
+
+| Item | Status | Evidence and remaining gate |
+| --- | --- | --- |
+| R1 | Implemented locally | Calendar-based next local occurrence, stored offset ignored, explicit gap/fold policy; real-method Groovy regressions pass spring/fall, year rollover, exact start and late calls. Hub time-change event behavior still needs live checks. |
+| R2 | Implemented locally | Accurate legacy labels plus opt-in sunrise/peak-deadline and sunset/evening-deadline anchors. Synthetic winter/summer legacy-versus-solar previews and continuity checks pass. Existing instances remain legacy until enabled. |
+| R3 | Implemented locally | Reject same-day spans under four minutes and overnight windows; validate tuning limits; constrain anchors with nonzero transition segments. Narrow/extreme-window tests pass. |
+| R4 | Implemented locally | Missing/invalid solar data and calculation failures hold targets and establish a five-minute retry. Throwing/null solar stub tests pass. Fallback policy is explicit hold, not fabricated daylight. |
+| R5 | Implemented locally | Reject output/output and output/limit aliasing; read each distinct input once and validate that snapshot. Alias, range, type, missing value, and read-count tests pass. Hub reads are sequential, not atomic. |
+
+Verification: `tests/circadian_regression.groovy` passed against Apache Groovy 2.4.21 with stubbed Hubitat APIs. Source parses and executes locally. Synthetic previews: winter warming moves from 17:30 legacy to 16:00 solar for 17:00 sunset; summer evening stays limited by the 18:30 deadline. Tests are not evidence of Hubitat compiler/runtime approval. Live test-instance compilation, UI, scheduling, and lifecycle checks remain deployment blockers; R6-R11 and broader protocol redesign remain planned.
+
+Handoffs: Planner -> Implementer under the user's Now approval; Implementer -> Docs updated source, test coverage and affected docs; Docs -> Reviewer checked diff, links and local regression evidence; Reviewer -> Release readiness is pending live hub validation. Maintainer owns the next deployment/test-instance authorization and remaining product decisions. No claim of clinical efficacy is made.

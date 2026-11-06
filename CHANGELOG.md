@@ -2,8 +2,13 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Prepared v2.1.6 (unreleased): DST-safe local calendar scheduling, opt-in solar anchors and accurate timing labels, same-day window/tuning validation, hold-and-retry recovery, and distinct-output/input snapshot safeguards.
+
 ### Added
 
+- Offline Groovy regression coverage for roadmap R1-R5; live Hubitat validation remains pending.
 - Source-review findings, DST reproduction evidence, impact assessment, and a prioritized seasonal-lighting simplification proposal in ROADMAP.md. App behavior is unchanged.
 
 ## [v2.1.5] - 2026-11-05

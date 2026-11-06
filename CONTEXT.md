@@ -6,7 +6,7 @@ Circadian Hub Variables computes dimmer percentages and color temperatures for H
 
 ## Runtime and current state
 
-The existing single-file Groovy app is v2.1.5, metadata dated 2026-11-05. It uses Hubitat location time/sun information, numeric Hub Variables, adaptive scheduling, and configurable curves. There is no automated test suite. Hubitat execution has not been verified during this documentation retrofit.
+The existing single-file Groovy app is v2.1.5, metadata dated 2026-11-05. It uses Hubitat location time/sun information, numeric Hub Variables, adaptive scheduling, and configurable curves. An offline Groovy regression suite was added during subsequent Now-item work. Hubitat execution has not been verified during this documentation retrofit.
 
 ## Owners and adoption
 
@@ -30,3 +30,7 @@ Downstream lighting rules and physical fixtures are outside this repository. Liv
 ## v2.1.5 release authorization
 
 On 2026-11-05 Dylan explicitly requested release of the unreleased changes as v2.1.5 and deployment to Hubitat app code #933. This authorizes the scoped release and source update, superseding the prior documentation-only action boundary for this task. Broader policy adoption remains unresolved.
+
+## Current implementation work
+
+The user subsequently authorized implementing all roadmap Now items (R1-R5). Local source metadata is prepared as v2.1.6, unreleased; v2.1.5 remains the deployed release. Runtime changes use an opt-in solar mode to avoid forcing the unresolved broader seasonal/household redesign on existing instances. Local Groovy regression tests exist under tests; Hubitat compilation and lifecycle checks remain pending. No further deployment or publication was requested for this scope.
