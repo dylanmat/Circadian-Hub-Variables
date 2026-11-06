@@ -21,7 +21,7 @@ The app now enforces all dimmer and color-temperature limits through Hub Variabl
 
 ## Development and project status
 
-The single-file Hubitat Groovy app is currently v2.1.4 (metadata date 2026-01-08). There is no automated test suite or standalone runtime. Follow [AGENTS.md](AGENTS.md) and [STANDARDS.md](STANDARDS.md) for contribution and validation requirements. Release history is in [CHANGELOG.md](CHANGELOG.md).
+The single-file Hubitat Groovy app is currently v2.1.5 (metadata date 2026-11-05). There is no automated test suite or standalone runtime. Follow [AGENTS.md](AGENTS.md) and [STANDARDS.md](STANDARDS.md) for contribution and validation requirements. Release history is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Documentation map and ownership
 

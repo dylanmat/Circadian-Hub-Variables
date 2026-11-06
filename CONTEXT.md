@@ -6,7 +6,7 @@ Circadian Hub Variables computes dimmer percentages and color temperatures for H
 
 ## Runtime and current state
 
-The existing single-file Groovy app is v2.1.4, metadata dated 2026-01-08. It uses Hubitat location time/sun information, numeric Hub Variables, adaptive scheduling, and configurable curves. There is no automated test suite. Hubitat execution has not been verified during this documentation retrofit.
+The existing single-file Groovy app is v2.1.5, metadata dated 2026-11-05. It uses Hubitat location time/sun information, numeric Hub Variables, adaptive scheduling, and configurable curves. There is no automated test suite. Hubitat execution has not been verified during this documentation retrofit.
 
 ## Owners and adoption
 
@@ -26,3 +26,7 @@ CT means color temperature in Kelvin. Output variables hold computed targets; li
 ## Known limitations
 
 Downstream lighting rules and physical fixtures are outside this repository. Live hub validation, owner assignments, and security approval remain outstanding; documentation consistency alone does not establish operational readiness.
+
+## v2.1.5 release authorization
+
+On 2026-11-05 Dylan explicitly requested release of the unreleased changes as v2.1.5 and deployment to Hubitat app code #933. This authorizes the scoped release and source update, superseding the prior documentation-only action boundary for this task. Broader policy adoption remains unresolved.

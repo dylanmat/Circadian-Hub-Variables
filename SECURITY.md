@@ -44,3 +44,7 @@ Every permitted data route and consequential tool action has an explicit policy 
 ## Project action boundary
 
 This documentation task permits local documentation edits and non-mutating verification. It does not authorize hub access, variable writes, installation, deployment, publication, or sending household data to external services. Install/update logs include settings; debug logs may include target values and sun details. Retention, log sharing, incident contact, and operational permissions above require maintainer decisions before affected actions. AI provider/model approval is not applicable to the app runtime; agent service use remains subject to the unresolved data-handling policy.
+
+## Scoped release authorization
+
+The subsequent 2026-11-05 user request authorizes release v2.1.5 and deployment of its source to Hubitat app code #933 through the connected Hubitat tools. Source readback and compilation verification are within scope. This supersedes the earlier task boundary for this release only; no unrelated settings or device changes are authorized.
