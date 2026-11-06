@@ -34,3 +34,7 @@ On 2026-11-05 Dylan explicitly requested release of the unreleased changes as v2
 ## Current implementation work
 
 The user subsequently authorized implementing all roadmap Now items (R1-R5). Local source metadata is prepared as v2.1.6, unreleased; v2.1.5 remains the deployed release. Runtime changes use an opt-in solar mode to avoid forcing the unresolved broader seasonal/household redesign on existing instances. Local Groovy regression tests exist under tests; Hubitat compilation and lifecycle checks remain pending. No further deployment or publication was requested for this scope.
+
+## Deployment verification - v2.1.6
+
+The subsequent user request authorized committing and deploying this implementation. Commit 6fcb1ae contains the implementation and regression tests. Hubitat app code #933 compiled successfully at code revision 16; readback matched local source. Offline Groovy regressions passed again before deployment. Solar mode remains opt-in; no instance settings were changed. Full live lifecycle, event delivery, and all-day curve behavior remain unverified. Earlier statements about pending deployment describe the pre-deployment state. No GitHub push, tag, or release was performed for this task.

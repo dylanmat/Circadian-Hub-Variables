@@ -21,7 +21,7 @@ The app now enforces all dimmer and color-temperature limits through Hub Variabl
 
 ## Development and project status
 
-The single-file Hubitat Groovy app is prepared as v2.1.6 (unreleased; deployed release remains v2.1.5) (metadata date 2026-11-05). An offline Groovy regression suite is available; the app runtime remains Hubitat. Follow [AGENTS.md](AGENTS.md) and [STANDARDS.md](STANDARDS.md) for contribution and validation requirements. Release history is in [CHANGELOG.md](CHANGELOG.md).
+The single-file Hubitat Groovy app is v2.1.6 (deployed to Hubitat app code #933; GitHub release pending) (metadata date 2026-11-05). An offline Groovy regression suite is available; the app runtime remains Hubitat. Follow [AGENTS.md](AGENTS.md) and [STANDARDS.md](STANDARDS.md) for contribution and validation requirements. Release history is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Documentation map and ownership
 
@@ -46,7 +46,7 @@ This framework is adapted to the existing Hubitat app, not a documentation-only 
 
 ## Unreleased timing and validation changes
 
-Version 2.1.6 is prepared locally and has not been deployed. Existing installations retain legacy curves because `solarAnchors` is off unless explicitly enabled. The peak deadline is now labeled as solar-mode-only; legacy peaks remain near solar noon.
+Version 2.1.6 was compiled and deployed to Hubitat app code #933 following the user's explicit commit-and-deploy request. Source readback matched the committed app. Existing installations retain legacy curves because `solarAnchors` is off unless explicitly enabled. The peak deadline is now labeled as solar-mode-only; legacy peaks remain near solar noon.
 
 When enabled, solar mode reaches the daytime peak at the earlier of sunrise and the configured peak deadline, constrained inside the active window. The evening anchor is the earlier of sunset and the evening deadline; CT head start and dimmer lag apply around it. The end of the window still controls final targets. This supports a household routine; it is not strict dawn-to-dusk replication or a validated SAD treatment. Preview the effect before enabling it: an early summer sunrise can reach peak shortly after window start.
 
@@ -55,3 +55,7 @@ Use a same-day active window of at least four minutes. Overnight/equal/reversed 
 Times retain their configured local hour/minute even when Hubitat stores an old date or UTC offset. Next-day scheduling uses the hub timezone's calendar date. Missing spring times move forward through the gap; repeated autumn times use the standard-time occurrence. Invalid settings or unavailable/current-day-invalid solar data hold existing outputs and retry after five minutes. Review hub warnings to correct configuration; no fabricated solar schedule is used.
 
 Offline regression instructions are in [tests/README.md](tests/README.md). Live Hubitat verification is still required before deployment.
+
+## Deployment verification - v2.1.6
+
+The subsequent user request authorized committing and deploying this implementation. Commit 6fcb1ae contains the implementation and regression tests. Hubitat app code #933 compiled successfully at code revision 16; readback matched local source. Offline Groovy regressions passed again before deployment. Solar mode remains opt-in; no instance settings were changed. Full live lifecycle, event delivery, and all-day curve behavior remain unverified. Earlier statements about pending deployment describe the pre-deployment state. No GitHub push, tag, or release was performed for this task.

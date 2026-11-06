@@ -4,7 +4,7 @@
 
 ### Changed
 
-- Prepared v2.1.6 (unreleased): DST-safe local calendar scheduling, opt-in solar anchors and accurate timing labels, same-day window/tuning validation, hold-and-retry recovery, and distinct-output/input snapshot safeguards.
+- Deployed v2.1.6 to Hubitat app code #933 (GitHub release pending): DST-safe local calendar scheduling, opt-in solar anchors and accurate timing labels, same-day window/tuning validation, hold-and-retry recovery, and distinct-output/input snapshot safeguards.
 
 ### Added
 
