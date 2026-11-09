@@ -1,5 +1,9 @@
 # Architecture
 
+## v2.1.7 schedule design (unreleased)
+
+Dimmer uses four ordered local times and a bounded plateau after the daytime peak. Color temperature uses sunrise/sunset in Solar Mode and the household endpoints otherwise. Both color curves peak at the midpoint of sunrise and sunset. A shared update callback chooses the earliest next step across both curves and refreshes solar data at local midnight. When solar data fails or solar noon lies outside the clock window, the callback holds color temperature and retries within five minutes while maintaining dimmer updates.
+
 ## Current design
 
 The runtime is [circadian_hub_variables_hubitat_app.groovy](circadian_hub_variables_hubitat_app.groovy), installed as a user Hubitat app. Its preferences/mainPage select six numeric Hub Variables and configure time anchors, curves, integer output, window gating, and logging.

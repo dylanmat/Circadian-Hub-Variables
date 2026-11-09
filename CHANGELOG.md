@@ -4,6 +4,9 @@
 
 ### Changed
 
+- Separate household dimmer timing from Solar Mode. Color temperature peaks at the midpoint of sunrise and sunset in both modes.
+- Reorder settings, add an evening dimmer percentage, and remove lag, head-start and window-gating controls. Both morning exponents now use the same adjustment direction.
+
 - Deployed v2.1.6 to Hubitat app code #933 (GitHub release pending): DST-safe local calendar scheduling, opt-in solar anchors and accurate timing labels, same-day window/tuning validation, hold-and-retry recovery, and distinct-output/input snapshot safeguards.
 
 ### Added

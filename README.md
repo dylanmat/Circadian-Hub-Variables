@@ -11,17 +11,18 @@ Circadian Hub Variables is a Hubitat automation app that writes dynamic dimmer a
    - `minCT`: minimum allowed color temperature (1500-4000 K).
    - `maxCT`: maximum allowed color temperature (4500-8000 K).
 2. **Install or update the app.** Import the latest `circadian_hub_variables_hubitat_app.groovy` into Hubitat using the Apps Code editor and create an instance of the app.
-3. **Select your Hub Variables.** On the main app page choose the Hub Variable for each selector. The pulldowns list every numeric Hub Variable so `minDim`, `maxDim`, `minCT`, and `maxCT` now offer the same selection experience as the output variables.
-4. **Adjust the schedule and curves.** Configure the active window, morning/evening transitions, and optional plateau or exponent tuning to match your household routine. Update cadence is automatic based on the next 1% dimmer or color temperature step.
-5. **Save and monitor.** Tap *Done* to save. Within the active window, the app will populate the Hub Variables and keep them refreshed at the automatically calculated cadence. Enable debug logging temporarily if you need to trace the computed levels.
+3. **Select your Hub Variables.** Use two distinct numeric outputs and separate variables for the four limits.
+4. **Set Solar Mode.** On uses sunrise and sunset for color temperature. Off uses the active window start and end. Color temperature reaches its maximum at solar noon in both modes. In Off mode the active window must contain solar noon.
+5. **Set the household schedule.** Enter active window start, daytime peak, evening transition deadline, and active window end in that order on the same day. Dimmer rises from minimum to maximum, holds for the configured plateau, fades to the evening percentage at the deadline, then fades to minimum at the end. Solar Mode does not change this schedule.
+6. **Set Targets & Limits and save.** Enter the evening transition dimmer percentage directly. It defaults to 85% and is constrained to the configured dimmer bounds. The two morning exponents affect their own curves. Higher values move more of the rise earlier, and 1 uses the standard smooth curve. Tap *Done*.
 
 ## Targets & limits via Hub Variables
-The app now enforces all dimmer and color-temperature limits through Hub Variables. This allows external rules to adjust thresholds without reopening the app: just update the underlying Hub Variable and the next scheduled run will honor the new bounds (provided they stay within the documented ranges). Validation prevents writes when a value is missing, out of range, or when minimums exceed maximums.
+The four minimum and maximum limits come from Hub Variables. This allows external rules to adjust thresholds without reopening the app: just update the underlying Hub Variable and the next scheduled run will honor the new bounds (provided they stay within the documented ranges). Validation prevents writes when a value is missing, out of range, or when minimums exceed maximums.
 
 
 ## Development and project status
 
-The single-file Hubitat Groovy app is v2.1.6 (deployed to Hubitat app code #933; GitHub release pending) (metadata date 2026-11-05). An offline Groovy regression suite is available; the app runtime remains Hubitat. Follow [AGENTS.md](AGENTS.md) and [STANDARDS.md](STANDARDS.md) for contribution and validation requirements. Release history is in [CHANGELOG.md](CHANGELOG.md).
+The single-file Hubitat Groovy app has v2.1.7 changes in development. Hubitat app code #933 is on v2.1.6. An offline Groovy regression suite is available; the app runtime remains Hubitat. Follow [AGENTS.md](AGENTS.md) and [STANDARDS.md](STANDARDS.md) for contribution and validation requirements. Release history is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Documentation map and ownership
 
@@ -44,17 +45,9 @@ This table is the central inventory of required root documents and their update 
 
 This framework is adapted to the existing Hubitat app, not a documentation-only product. Unresolved decisions use `[REQUIRED: description]`; they do not grant permission. Owner assignments and broader policy approvals remain pending in [CONTEXT.md](CONTEXT.md) and [SECURITY.md](SECURITY.md). The original import sources [READMEog.md](READMEog.md) and [AGENTSog.md](AGENTSog.md) are retained for provenance; the canonical instructions are README.md and AGENTS.md.
 
-## Unreleased timing and validation changes
+## Upgrading from v2.1.6
 
-Version 2.1.6 was compiled and deployed to Hubitat app code #933 following the user's explicit commit-and-deploy request. Source readback matched the committed app. Existing installations retain legacy curves because `solarAnchors` is off unless explicitly enabled. The peak deadline is now labeled as solar-mode-only; legacy peaks remain near solar noon.
-
-When enabled, solar mode reaches the daytime peak at the earlier of sunrise and the configured peak deadline, constrained inside the active window. The evening anchor is the earlier of sunset and the evening deadline; CT head start and dimmer lag apply around it. The end of the window still controls final targets. This supports a household routine; it is not strict dawn-to-dusk replication or a validated SAD treatment. Preview the effect before enabling it: an early summer sunrise can reach peak shortly after window start.
-
-Use a same-day active window of at least four minutes. Overnight/equal/reversed windows are rejected. CT head start and dimmer lag accept 0-240 minutes; plateau accepts 0-360 minutes. Anchors are constrained to reserve continuous morning/evening segments; extreme settings may be shortened to fit. Select two different output variables and never reuse either as a limit variable.
-
-Times retain their configured local hour/minute even when Hubitat stores an old date or UTC offset. Next-day scheduling uses the hub timezone's calendar date. Missing spring times move forward through the gap; repeated autumn times use the standard-time occurrence. Invalid settings or unavailable/current-day-invalid solar data hold existing outputs and retry after five minutes. Review hub warnings to correct configuration; no fabricated solar schedule is used.
-
-Offline regression instructions are in [tests/README.md](tests/README.md). Live Hubitat verification is still required before deployment.
+Existing clock times now control the household dimmer schedule. Check their order and verify the new evening percentage before saving. The app shortens the plateau when needed to leave time for the fade. Saved lag, head-start and window-gating settings are obsolete. Existing morning exponent values are retained, with both using the same direction for adjustment. Color temperature holds its minimum outside its curve. If the hub cannot supply valid solar times, the app holds color temperature and retries while the dimmer schedule continues.
 
 ## Deployment verification - v2.1.6
 
